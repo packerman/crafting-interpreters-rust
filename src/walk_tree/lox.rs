@@ -1,9 +1,11 @@
 use std::{fs, process::ExitCode};
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use rustyline::{error::ReadlineError, Editor};
 
 use crate::walk_tree::exit_code;
+
+use super::scanner::ScanTokens;
 
 pub fn run_file(path: &str) -> Result<ExitCode> {
     let source = fs::read_to_string(path)?;
@@ -47,13 +49,8 @@ pub fn run_prompt() -> Result<ExitCode> {
 }
 
 pub fn run(source: String) -> Result<()> {
-    println!("Source: {}", source);
+    ScanTokens::new(&source)
+        .into_iter()
+        .for_each(|token| println!("{:#?}", token));
     Ok(())
-}
-pub fn error<T>(line: usize, message: &str) -> Result<T> {
-    self::report(line, "", message)
-}
-
-fn report<T>(line: usize, where_part: &str, message: &str) -> Result<T> {
-    Err(anyhow!("[line {}] Error{}: {}", line, where_part, message))
 }
