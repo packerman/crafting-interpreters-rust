@@ -1,38 +1,106 @@
-use std::str::Chars;
+use std::{iter::Peekable, str::Chars};
 
 use anyhow::Result;
 
 use super::{error, token::Token, token_kind::TokenKind};
 
 pub struct ScanTokens<'a> {
-    chars: Chars<'a>,
+    chars: Peekable<Chars<'a>>,
     current: String,
     line: usize,
+    is_at_end: bool,
 }
 
 impl<'a> ScanTokens<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
-            chars: source.chars(),
+            chars: source.chars().peekable(),
             current: String::new(),
             line: 1,
+            is_at_end: false,
         }
     }
 
     fn scan_token(&mut self) -> Option<Result<Token>> {
-        self.advance().map(|c| match c {
-            '(' => self.emit_token(TokenKind::LeftParen),
-            ')' => self.emit_token(TokenKind::RightParen),
-            '{' => self.emit_token(TokenKind::LeftBrace),
-            '}' => self.emit_token(TokenKind::RightBrace),
-            ',' => self.emit_token(TokenKind::Comma),
-            '.' => self.emit_token(TokenKind::Dot),
-            '-' => self.emit_token(TokenKind::Minus),
-            '+' => self.emit_token(TokenKind::Plus),
-            ';' => self.emit_token(TokenKind::Semicolon),
-            '*' => self.emit_token(TokenKind::Star),
-            _ => error::error(self.line, "Unexpected character"),
-        })
+        if let Some(c) = self.advance() {
+            match c {
+                '(' => Some(self.emit_token(TokenKind::LeftParen)),
+                ')' => Some(self.emit_token(TokenKind::RightParen)),
+                '{' => Some(self.emit_token(TokenKind::LeftBrace)),
+                '}' => Some(self.emit_token(TokenKind::RightBrace)),
+                ',' => Some(self.emit_token(TokenKind::Comma)),
+                '.' => Some(self.emit_token(TokenKind::Dot)),
+                '-' => Some(self.emit_token(TokenKind::Minus)),
+                '+' => Some(self.emit_token(TokenKind::Plus)),
+                ';' => Some(self.emit_token(TokenKind::Semicolon)),
+                '*' => Some(self.emit_token(TokenKind::Star)),
+                '!' => {
+                    let token_kind = if self.match_char('=') {
+                        TokenKind::BangEqual
+                    } else {
+                        TokenKind::Bang
+                    };
+                    Some(self.emit_token(token_kind))
+                }
+                '=' => {
+                    let token_kind = if self.match_char('=') {
+                        TokenKind::EqualEqual
+                    } else {
+                        TokenKind::Equal
+                    };
+                    Some(self.emit_token(token_kind))
+                }
+                '<' => {
+                    let token_kind = if self.match_char('=') {
+                        TokenKind::LessEqual
+                    } else {
+                        TokenKind::Less
+                    };
+                    Some(self.emit_token(token_kind))
+                }
+                '>' => {
+                    let token_kind = if self.match_char('=') {
+                        TokenKind::GreaterEqual
+                    } else {
+                        TokenKind::Greater
+                    };
+                    Some(self.emit_token(token_kind))
+                }
+                '/' => {
+                    if self.match_char('/') {
+                        while self.chars.peek().map_or(false, |c| *c != '\n') {
+                            self.chars.next();
+                        }
+                        None
+                    } else {
+                        Some(self.emit_token(TokenKind::Slash))
+                    }
+                }
+                ' ' => None,
+                '\r' => None,
+                '\t' => None,
+                '\n' => {
+                    self.line += 1;
+                    None
+                }
+                _ => Some(error::error(self.line, "Unexpected character")),
+            }
+        } else {
+            Some(self.emit_token(TokenKind::Eof))
+        }
+    }
+
+    fn match_char(&mut self, expected: char) -> bool {
+        if let Some(c) = self.chars.peek() {
+            if *c != expected {
+                false
+            } else {
+                self.chars.next();
+                true
+            }
+        } else {
+            false
+        }
     }
 
     fn advance(&mut self) -> Option<char> {
@@ -51,9 +119,19 @@ impl<'a> ScanTokens<'a> {
 }
 
 impl Iterator for ScanTokens<'_> {
-    type Item = Token;
+    type Item = Result<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        error::try_until_ok(|| self.scan_token())
+        if self.is_at_end {
+            return None;
+        }
+        loop {
+            if let Some(token) = self.scan_token() {
+                if token.as_ref().map_or(false, |token| token.is_eof()) {
+                    self.is_at_end = true;
+                }
+                return Some(token);
+            }
+        }
     }
 }
