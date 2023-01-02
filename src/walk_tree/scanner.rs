@@ -28,48 +28,20 @@ impl ScanTokens {
     fn scan_token(&mut self) -> Option<Result<Token>> {
         let ch = self.advance();
         match ch {
-            '(' => Some(self.emit_token(TokenKind::LeftParen)),
-            ')' => Some(self.emit_token(TokenKind::RightParen)),
-            '{' => Some(self.emit_token(TokenKind::LeftBrace)),
-            '}' => Some(self.emit_token(TokenKind::RightBrace)),
-            ',' => Some(self.emit_token(TokenKind::Comma)),
-            '.' => Some(self.emit_token(TokenKind::Dot)),
-            '-' => Some(self.emit_token(TokenKind::Minus)),
-            '+' => Some(self.emit_token(TokenKind::Plus)),
-            ';' => Some(self.emit_token(TokenKind::Semicolon)),
-            '*' => Some(self.emit_token(TokenKind::Star)),
-            '!' => {
-                let token_kind = if self.match_char('=') {
-                    TokenKind::BangEqual
-                } else {
-                    TokenKind::Bang
-                };
-                Some(self.emit_token(token_kind))
-            }
-            '=' => {
-                let token_kind = if self.match_char('=') {
-                    TokenKind::EqualEqual
-                } else {
-                    TokenKind::Equal
-                };
-                Some(self.emit_token(token_kind))
-            }
-            '<' => {
-                let token_kind = if self.match_char('=') {
-                    TokenKind::LessEqual
-                } else {
-                    TokenKind::Less
-                };
-                Some(self.emit_token(token_kind))
-            }
-            '>' => {
-                let token_kind = if self.match_char('=') {
-                    TokenKind::GreaterEqual
-                } else {
-                    TokenKind::Greater
-                };
-                Some(self.emit_token(token_kind))
-            }
+            '(' => self.emit_token(TokenKind::LeftParen),
+            ')' => self.emit_token(TokenKind::RightParen),
+            '{' => self.emit_token(TokenKind::LeftBrace),
+            '}' => self.emit_token(TokenKind::RightBrace),
+            ',' => self.emit_token(TokenKind::Comma),
+            '.' => self.emit_token(TokenKind::Dot),
+            '-' => self.emit_token(TokenKind::Minus),
+            '+' => self.emit_token(TokenKind::Plus),
+            ';' => self.emit_token(TokenKind::Semicolon),
+            '*' => self.emit_token(TokenKind::Star),
+            '!' => self.cond_emit('=', TokenKind::BangEqual, TokenKind::Bang),
+            '=' => self.cond_emit('=', TokenKind::EqualEqual, TokenKind::Equal),
+            '<' => self.cond_emit('=', TokenKind::LessEqual, TokenKind::Less),
+            '>' => self.cond_emit('=', TokenKind::GreaterEqual, TokenKind::Greater),
             '/' => {
                 if self.match_char('/') {
                     while self.peek() != '\n' && !self.is_at_end() {
@@ -77,7 +49,7 @@ impl ScanTokens {
                     }
                     None
                 } else {
-                    Some(self.emit_token(TokenKind::Slash))
+                    self.emit_token(TokenKind::Slash)
                 }
             }
             ' ' => None,
@@ -88,7 +60,13 @@ impl ScanTokens {
                 None
             }
             '"' => self.string(),
-            _ => Some(error::error(self.line, "Unexpected character")),
+            ch => {
+                if ch.is_ascii_digit() {
+                    self.number()
+                } else {
+                    Some(error::error(self.line, "Unexpected character"))
+                }
+            }
         }
     }
 
@@ -104,8 +82,12 @@ impl ScanTokens {
         } else {
             self.advance();
             let value = self.copy_slice(self.start + 1, self.current - 1);
-            Some(self.emit_token(TokenKind::String(value)))
+            self.emit_token(TokenKind::String(value))
         }
+    }
+
+    fn number(&self) -> Option<Result<Token>> {
+        todo!()
     }
 
     fn start(&mut self) {
@@ -135,12 +117,26 @@ impl ScanTokens {
         }
     }
 
-    fn emit_token(&self, kind: TokenKind) -> Result<Token> {
-        Ok(Token::new(
+    fn emit_token(&self, kind: TokenKind) -> Option<Result<Token>> {
+        Some(Ok(Token::new(
             kind,
             self.copy_slice(self.start, self.current),
             self.line,
-        ))
+        )))
+    }
+
+    fn cond_emit(
+        &mut self,
+        if_match: char,
+        then_emit: TokenKind,
+        else_emit: TokenKind,
+    ) -> Option<Result<Token>> {
+        let token_kind = if self.match_char(if_match) {
+            then_emit
+        } else {
+            else_emit
+        };
+        self.emit_token(token_kind)
     }
 
     fn copy_slice(&self, begin: usize, end: usize) -> String {
@@ -152,7 +148,7 @@ impl ScanTokens {
             None
         } else {
             self.consumed = true;
-            Some(self.emit_token(TokenKind::Eof))
+            self.emit_token(TokenKind::Eof)
         }
     }
 }
