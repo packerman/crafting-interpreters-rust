@@ -254,4 +254,18 @@ mod tests {
             ]
         )
     }
+
+    #[test]
+    fn numbers_works() {
+        let tokens: Result<Vec<_>> = ScanTokens::new("3.14 + 1").collect();
+        assert_eq!(
+            tokens.unwrap(),
+            vec![
+                Token::new(TokenKind::Number(3.14), "3.14".to_string(), 1),
+                Token::new(TokenKind::Plus, "+".to_string(), 1),
+                Token::new(TokenKind::Number(1.0), "1".to_string(), 1),
+                Token::new(TokenKind::Eof, "".to_string(), 1)
+            ]
+        )
+    }
 }
