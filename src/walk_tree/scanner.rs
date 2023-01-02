@@ -7,6 +7,7 @@ pub struct ScanTokens {
     start: usize,
     current: usize,
     line: usize,
+    consumed: bool,
 }
 
 impl ScanTokens {
@@ -16,6 +17,7 @@ impl ScanTokens {
             start: 0,
             current: 0,
             line: 1,
+            consumed: false,
         }
     }
 
@@ -26,23 +28,23 @@ impl ScanTokens {
     fn scan_token(&mut self) -> Option<Result<Token>> {
         let ch = self.advance();
         match ch {
-            '(' => Some(self.new_token(TokenKind::LeftParen)),
-            ')' => Some(self.new_token(TokenKind::RightParen)),
-            '{' => Some(self.new_token(TokenKind::LeftBrace)),
-            '}' => Some(self.new_token(TokenKind::RightBrace)),
-            ',' => Some(self.new_token(TokenKind::Comma)),
-            '.' => Some(self.new_token(TokenKind::Dot)),
-            '-' => Some(self.new_token(TokenKind::Minus)),
-            '+' => Some(self.new_token(TokenKind::Plus)),
-            ';' => Some(self.new_token(TokenKind::Semicolon)),
-            '*' => Some(self.new_token(TokenKind::Star)),
+            '(' => Some(self.emit_token(TokenKind::LeftParen)),
+            ')' => Some(self.emit_token(TokenKind::RightParen)),
+            '{' => Some(self.emit_token(TokenKind::LeftBrace)),
+            '}' => Some(self.emit_token(TokenKind::RightBrace)),
+            ',' => Some(self.emit_token(TokenKind::Comma)),
+            '.' => Some(self.emit_token(TokenKind::Dot)),
+            '-' => Some(self.emit_token(TokenKind::Minus)),
+            '+' => Some(self.emit_token(TokenKind::Plus)),
+            ';' => Some(self.emit_token(TokenKind::Semicolon)),
+            '*' => Some(self.emit_token(TokenKind::Star)),
             '!' => {
                 let token_kind = if self.match_char('=') {
                     TokenKind::BangEqual
                 } else {
                     TokenKind::Bang
                 };
-                Some(self.new_token(token_kind))
+                Some(self.emit_token(token_kind))
             }
             '=' => {
                 let token_kind = if self.match_char('=') {
@@ -50,7 +52,7 @@ impl ScanTokens {
                 } else {
                     TokenKind::Equal
                 };
-                Some(self.new_token(token_kind))
+                Some(self.emit_token(token_kind))
             }
             '<' => {
                 let token_kind = if self.match_char('=') {
@@ -58,7 +60,7 @@ impl ScanTokens {
                 } else {
                     TokenKind::Less
                 };
-                Some(self.new_token(token_kind))
+                Some(self.emit_token(token_kind))
             }
             '>' => {
                 let token_kind = if self.match_char('=') {
@@ -66,7 +68,7 @@ impl ScanTokens {
                 } else {
                     TokenKind::Greater
                 };
-                Some(self.new_token(token_kind))
+                Some(self.emit_token(token_kind))
             }
             '/' => {
                 if self.match_char('/') {
@@ -75,7 +77,7 @@ impl ScanTokens {
                     }
                     None
                 } else {
-                    Some(self.new_token(TokenKind::Slash))
+                    Some(self.emit_token(TokenKind::Slash))
                 }
             }
             ' ' => None,
@@ -102,7 +104,7 @@ impl ScanTokens {
         } else {
             self.advance();
             let value = self.copy_slice(self.start + 1, self.current - 1);
-            Some(self.new_token(TokenKind::String(value)))
+            Some(self.emit_token(TokenKind::String(value)))
         }
     }
 
@@ -135,7 +137,7 @@ impl ScanTokens {
         }
     }
 
-    fn new_token(&self, kind: TokenKind) -> Result<Token> {
+    fn emit_token(&self, kind: TokenKind) -> Result<Token> {
         Ok(Token::new(
             kind,
             self.copy_slice(self.start, self.current),
@@ -146,17 +148,31 @@ impl ScanTokens {
     fn copy_slice(&self, begin: usize, end: usize) -> String {
         String::from_iter(&self.source[begin..end])
     }
+
+    fn emit_eof(&mut self) -> Option<Result<Token>> {
+        if self.consumed {
+            None
+        } else {
+            self.consumed = true;
+            Some(self.emit_token(TokenKind::Eof))
+        }
+    }
 }
 
 impl Iterator for ScanTokens {
     type Item = Result<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.is_at_end() {
-            return Some(self.new_token(TokenKind::Eof));
+        loop {
+            self.start();
+            if self.is_at_end() {
+                return self.emit_eof();
+            }
+            let token = self.scan_token();
+            if token.is_some() {
+                return token;
+            }
         }
-        self.start();
-        self.scan_token()
     }
 }
 
@@ -217,7 +233,11 @@ mod tests {
         assert_eq!(
             tokens.unwrap(),
             vec![
-                Token::new(TokenKind::String("+ -".to_string()), "+ -".to_string(), 1),
+                Token::new(
+                    TokenKind::String("+ -".to_string()),
+                    "\"+ -\"".to_string(),
+                    1
+                ),
                 Token::new(TokenKind::Eof, "".to_string(), 1)
             ]
         )
