@@ -91,8 +91,20 @@ impl<'a> ScanTokens<'a> {
         }
     }
 
-    fn string(&self) -> Option<Result<Token>> {
-        todo!()
+    fn string(&mut self) -> Option<Result<Token>> {
+        while self.peek().map_or(false, |c| *c != '"') {
+            if self.peek().map_or(false, |c| *c == '\n') {
+                self.line += 1;
+            }
+            self.advance();
+        }
+        if self.peek().is_none() {
+            Some(error::error(self.line, "Unterminated string."))
+        } else {
+            self.skip();
+            self.current.remove(0);
+            Some(self.emit_token(TokenKind::String))
+        }
     }
 
     fn start(&mut self) {
@@ -198,6 +210,18 @@ mod tests {
                 Token::new(TokenKind::Greater, ">".to_string(), 1),
                 Token::new(TokenKind::LessEqual, "<=".to_string(), 1),
                 Token::new(TokenKind::EqualEqual, "==".to_string(), 1),
+                Token::new(TokenKind::Eof, "".to_string(), 1)
+            ]
+        )
+    }
+
+    #[test]
+    fn string_works() {
+        let tokens: Result<Vec<_>> = ScanTokens::new(r#""+ -""#).collect();
+        assert_eq!(
+            tokens.unwrap(),
+            vec![
+                Token::new(TokenKind::String, "+ -".to_string(), 1),
                 Token::new(TokenKind::Eof, "".to_string(), 1)
             ]
         )
