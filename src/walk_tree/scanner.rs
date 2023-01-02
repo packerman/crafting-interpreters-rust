@@ -120,12 +120,12 @@ impl<'a> ScanTokens<'a> {
         next
     }
 
-    fn peek(&mut self) -> Option<&char> {
-        self.chars.peek()
-    }
-
     fn skip(&mut self) {
         self.chars.next();
+    }
+
+    fn peek(&mut self) -> Option<&char> {
+        self.chars.peek()
     }
 
     fn emit_token(&mut self, kind: TokenKind) -> Result<Token> {
