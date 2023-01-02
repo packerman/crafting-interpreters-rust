@@ -113,13 +113,11 @@ impl ScanTokens {
     fn match_char(&mut self, expected: char) -> bool {
         if self.is_at_end() {
             false
+        } else if self.source[self.current] != expected {
+            false
         } else {
-            if self.source[self.current] != expected {
-                false
-            } else {
-                self.current += 1;
-                true
-            }
+            self.current += 1;
+            true
         }
     }
 
@@ -129,7 +127,7 @@ impl ScanTokens {
         ch
     }
 
-    fn peek(&mut self) -> char {
+    fn peek(&self) -> char {
         if self.is_at_end() {
             '\0'
         } else {
@@ -137,7 +135,7 @@ impl ScanTokens {
         }
     }
 
-    fn new_token(&mut self, kind: TokenKind) -> Result<Token> {
+    fn new_token(&self, kind: TokenKind) -> Result<Token> {
         Ok(Token::new(
             kind,
             self.copy_slice(self.start, self.current),
