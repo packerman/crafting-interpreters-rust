@@ -1,19 +1,60 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 
 use super::{error, token::Token, token_kind::TokenKind};
 
-pub struct ScanTokens {
+pub struct Scanner<'a> {
+    keywords: HashMap<&'a str, TokenKind>,
+}
+
+impl<'a> Scanner<'a> {
+    pub fn new() -> Self {
+        Self {
+            keywords: Self::keywords(),
+        }
+    }
+
+    pub fn scan_tokens(&self, source: &str) -> ScanTokens {
+        ScanTokens::new(source, &self.keywords)
+    }
+
+    fn keywords() -> HashMap<&'a str, TokenKind> {
+        HashMap::from([
+            ("and", TokenKind::And),
+            ("class", TokenKind::Class),
+            ("else", TokenKind::Else),
+            ("false", TokenKind::False),
+            ("for", TokenKind::For),
+            ("fun", TokenKind::Fun),
+            ("if", TokenKind::If),
+            ("nil", TokenKind::Nil),
+            ("or", TokenKind::Or),
+            ("print", TokenKind::Print),
+            ("return", TokenKind::Return),
+            ("super", TokenKind::Super),
+            ("this", TokenKind::This),
+            ("true", TokenKind::True),
+            ("var", TokenKind::Var),
+            ("while", TokenKind::While),
+        ])
+    }
+}
+
+pub struct ScanTokens<'a> {
     source: Vec<char>,
     start: usize,
     current: usize,
     line: usize,
     consumed: bool,
+    keywords: &'a HashMap<&'a str, TokenKind>,
 }
 
-impl ScanTokens {
-    pub fn new(source: &str) -> Self {
+impl<'a> ScanTokens<'a> {
+    pub fn new(source: &str, keywords: &'a HashMap<&'a str, TokenKind>) -> Self {
         Self {
             source: source.chars().collect(),
+            keywords,
             start: 0,
             current: 0,
             line: 1,
@@ -44,10 +85,7 @@ impl ScanTokens {
             '>' => self.cond_emit('=', TokenKind::GreaterEqual, TokenKind::Greater),
             '/' => {
                 if self.match_char('/') {
-                    while self.peek() != '\n' && !self.is_at_end() {
-                        self.advance();
-                    }
-                    None
+                    self.comment()
                 } else {
                     self.emit_token(TokenKind::Slash)
                 }
@@ -63,11 +101,20 @@ impl ScanTokens {
             ch => {
                 if ch.is_ascii_digit() {
                     self.number()
+                } else if ch.is_ascii_alphabetic() {
+                    self.identifier()
                 } else {
                     Some(error::error(self.line, "Unexpected character"))
                 }
             }
         }
+    }
+
+    fn comment(&mut self) -> Option<Result<Token>> {
+        while self.peek() != '\n' && !self.is_at_end() {
+            self.advance();
+        }
+        None
     }
 
     fn string(&mut self) -> Option<Result<Token>> {
@@ -98,6 +145,19 @@ impl ScanTokens {
         }
         let value = str::parse(&self.current_lexeme()).expect("Expected valid number");
         self.emit_token(TokenKind::Number(value))
+    }
+
+    fn identifier(&mut self) -> Option<Result<Token>> {
+        while self.peek().is_ascii_alphanumeric() {
+            self.advance();
+        }
+        let text = self.current_lexeme();
+        self.emit_token(
+            self.keywords
+                .get(text.as_str())
+                .cloned()
+                .unwrap_or(TokenKind::Identifier),
+        )
     }
 
     fn start(&mut self) {
@@ -171,7 +231,7 @@ impl ScanTokens {
     }
 }
 
-impl Iterator for ScanTokens {
+impl<'a> Iterator for ScanTokens<'a> {
     type Item = Result<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -194,7 +254,7 @@ mod tests {
 
     #[test]
     fn comment_works() {
-        let tokens: Result<Vec<_>> = ScanTokens::new("// this is a comment").collect();
+        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens("// this is a comment").collect();
         assert_eq!(
             tokens.unwrap(),
             vec![Token::new(TokenKind::Eof, "".to_string(), 1)]
@@ -203,7 +263,7 @@ mod tests {
 
     #[test]
     fn grouping_stuff_works() {
-        let tokens: Result<Vec<_>> = ScanTokens::new("(( )){}").collect();
+        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens("(( )){}").collect();
         assert_eq!(
             tokens.unwrap(),
             vec![
@@ -220,7 +280,7 @@ mod tests {
 
     #[test]
     fn operator_works() {
-        let tokens: Result<Vec<_>> = ScanTokens::new("!*+-/=<> <= ==").collect();
+        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens("!*+-/=<> <= ==").collect();
         assert_eq!(
             tokens.unwrap(),
             vec![
@@ -241,7 +301,7 @@ mod tests {
 
     #[test]
     fn string_works() {
-        let tokens: Result<Vec<_>> = ScanTokens::new(r#""+ -""#).collect();
+        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens(r#""+ -""#).collect();
         assert_eq!(
             tokens.unwrap(),
             vec![
@@ -257,13 +317,31 @@ mod tests {
 
     #[test]
     fn numbers_works() {
-        let tokens: Result<Vec<_>> = ScanTokens::new("3.14 + 1").collect();
+        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens("3.14 + 1").collect();
         assert_eq!(
             tokens.unwrap(),
             vec![
                 Token::new(TokenKind::Number(3.14), "3.14".to_string(), 1),
                 Token::new(TokenKind::Plus, "+".to_string(), 1),
                 Token::new(TokenKind::Number(1.0), "1".to_string(), 1),
+                Token::new(TokenKind::Eof, "".to_string(), 1)
+            ]
+        )
+    }
+
+    #[test]
+    fn identifier_works() {
+        let tokens: Result<Vec<_>> = Scanner::new()
+            .scan_tokens("and andaluzja and aluzja And")
+            .collect();
+        assert_eq!(
+            tokens.unwrap(),
+            vec![
+                Token::new(TokenKind::And, "and".to_string(), 1),
+                Token::new(TokenKind::Identifier, "andaluzja".to_string(), 1),
+                Token::new(TokenKind::And, "and".to_string(), 1),
+                Token::new(TokenKind::Identifier, "aluzja".to_string(), 1),
+                Token::new(TokenKind::Identifier, "And".to_string(), 1),
                 Token::new(TokenKind::Eof, "".to_string(), 1)
             ]
         )
