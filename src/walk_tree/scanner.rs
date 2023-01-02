@@ -113,9 +113,7 @@ impl ScanTokens {
     }
 
     fn match_char(&mut self, expected: char) -> bool {
-        if self.is_at_end() {
-            false
-        } else if self.source[self.current] != expected {
+        if self.is_at_end() || self.source[self.current] != expected {
             false
         } else {
             self.current += 1;
