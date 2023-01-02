@@ -68,8 +68,8 @@ impl<'a> ScanTokens<'a> {
                 }
                 '/' => {
                     if self.match_char('/') {
-                        while self.chars.peek().map_or(false, |c| *c != '\n') {
-                            self.chars.next();
+                        while self.peek().map_or(false, |c| *c != '\n') {
+                            self.skip();
                         }
                         None
                     } else {
@@ -83,6 +83,7 @@ impl<'a> ScanTokens<'a> {
                     self.line += 1;
                     None
                 }
+                '"' => self.string(),
                 _ => Some(error::error(self.line, "Unexpected character")),
             }
         } else {
@@ -90,12 +91,20 @@ impl<'a> ScanTokens<'a> {
         }
     }
 
+    fn string(&self) -> Option<Result<Token>> {
+        todo!()
+    }
+
+    fn start(&mut self) {
+        self.current.clear()
+    }
+
     fn match_char(&mut self, expected: char) -> bool {
-        if let Some(c) = self.chars.peek() {
+        if let Some(c) = self.peek() {
             if *c != expected {
                 false
             } else {
-                self.chars.next();
+                self.advance();
                 true
             }
         } else {
@@ -111,10 +120,16 @@ impl<'a> ScanTokens<'a> {
         next
     }
 
+    fn peek(&mut self) -> Option<&char> {
+        self.chars.peek()
+    }
+
+    fn skip(&mut self) {
+        self.chars.next();
+    }
+
     fn emit_token(&mut self, kind: TokenKind) -> Result<Token> {
-        let token = Token::new(kind, String::from(&self.current), self.line);
-        self.current.clear();
-        Ok(token)
+        Ok(Token::new(kind, String::from(&self.current), self.line))
     }
 }
 
@@ -126,6 +141,7 @@ impl Iterator for ScanTokens<'_> {
             return None;
         }
         loop {
+            self.start();
             if let Some(token) = self.scan_token() {
                 if token.as_ref().map_or(false, |token| token.is_eof()) {
                     self.is_at_end = true;
@@ -133,5 +149,57 @@ impl Iterator for ScanTokens<'_> {
                 return Some(token);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn comment_works() {
+        let tokens: Result<Vec<_>> = ScanTokens::new("// this is a comment").collect();
+        assert_eq!(
+            tokens.unwrap(),
+            vec![Token::new(TokenKind::Eof, "".to_string(), 1)]
+        )
+    }
+
+    #[test]
+    fn grouping_stuff_works() {
+        let tokens: Result<Vec<_>> = ScanTokens::new("(( )){}").collect();
+        assert_eq!(
+            tokens.unwrap(),
+            vec![
+                Token::new(TokenKind::LeftParen, "(".to_string(), 1),
+                Token::new(TokenKind::LeftParen, "(".to_string(), 1),
+                Token::new(TokenKind::RightParen, ")".to_string(), 1),
+                Token::new(TokenKind::RightParen, ")".to_string(), 1),
+                Token::new(TokenKind::LeftBrace, "{".to_string(), 1),
+                Token::new(TokenKind::RightBrace, "}".to_string(), 1),
+                Token::new(TokenKind::Eof, "".to_string(), 1)
+            ]
+        )
+    }
+
+    #[test]
+    fn operator_works() {
+        let tokens: Result<Vec<_>> = ScanTokens::new("!*+-/=<> <= ==").collect();
+        assert_eq!(
+            tokens.unwrap(),
+            vec![
+                Token::new(TokenKind::Bang, "!".to_string(), 1),
+                Token::new(TokenKind::Star, "*".to_string(), 1),
+                Token::new(TokenKind::Plus, "+".to_string(), 1),
+                Token::new(TokenKind::Minus, "-".to_string(), 1),
+                Token::new(TokenKind::Slash, "/".to_string(), 1),
+                Token::new(TokenKind::Equal, "=".to_string(), 1),
+                Token::new(TokenKind::Less, "<".to_string(), 1),
+                Token::new(TokenKind::Greater, ">".to_string(), 1),
+                Token::new(TokenKind::LessEqual, "<=".to_string(), 1),
+                Token::new(TokenKind::EqualEqual, "==".to_string(), 1),
+                Token::new(TokenKind::Eof, "".to_string(), 1)
+            ]
+        )
     }
 }
