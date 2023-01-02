@@ -41,6 +41,12 @@ impl<'a> Scanner<'a> {
     }
 }
 
+impl Default for Scanner<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct ScanTokens<'a> {
     source: Vec<char>,
     start: usize,

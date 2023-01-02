@@ -67,3 +67,9 @@ impl<'a> Lox<'a> {
         Ok(())
     }
 }
+
+impl Default for Lox<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
