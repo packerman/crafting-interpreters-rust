@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 use super::{error, token::Token, token_kind::TokenKind};
 
@@ -86,8 +86,18 @@ impl ScanTokens {
         }
     }
 
-    fn number(&self) -> Option<Result<Token>> {
-        todo!()
+    fn number(&mut self) -> Option<Result<Token>> {
+        while self.peek().is_ascii_digit() {
+            self.advance();
+        }
+        if self.peek() == '.' && self.peek_next().is_ascii_digit() {
+            self.advance();
+        }
+        while self.peek().is_ascii_digit() {
+            self.advance();
+        }
+        let value = str::parse(&self.current_lexeme()).expect("Expected valid number");
+        self.emit_token(TokenKind::Number(value))
     }
 
     fn start(&mut self) {
@@ -117,12 +127,16 @@ impl ScanTokens {
         }
     }
 
+    fn peek_next(&self) -> char {
+        if self.current + 1 >= self.source.len() {
+            '\0'
+        } else {
+            self.source[self.current + 1]
+        }
+    }
+
     fn emit_token(&self, kind: TokenKind) -> Option<Result<Token>> {
-        Some(Ok(Token::new(
-            kind,
-            self.copy_slice(self.start, self.current),
-            self.line,
-        )))
+        Some(Ok(Token::new(kind, self.current_lexeme(), self.line)))
     }
 
     fn cond_emit(
@@ -141,6 +155,10 @@ impl ScanTokens {
 
     fn copy_slice(&self, begin: usize, end: usize) -> String {
         String::from_iter(&self.source[begin..end])
+    }
+
+    fn current_lexeme(&self) -> String {
+        self.copy_slice(self.start, self.current)
     }
 
     fn emit_eof(&mut self) -> Option<Result<Token>> {
