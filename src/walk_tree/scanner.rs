@@ -86,6 +86,8 @@ impl<'a> ScanTokens<'a> {
             '/' => {
                 if self.match_char('/') {
                     self.comment()
+                } else if self.match_char('*') {
+                    self.block_comment()
                 } else {
                     self.emit_token(TokenKind::Slash)
                 }
@@ -115,6 +117,26 @@ impl<'a> ScanTokens<'a> {
             self.advance();
         }
         None
+    }
+
+    fn block_comment(&mut self) -> Option<Result<Token>> {
+        let mut nest = 1;
+        while !self.is_at_end() && nest > 0 {
+            let ch = self.advance();
+            if ch == '\n' {
+                self.line += 1;
+            }
+            if ch == '/' && self.match_char('*') {
+                nest += 1;
+            } else if ch == '*' && self.match_char('/') {
+                nest -= 1;
+            }
+        }
+        if nest > 0 {
+            Some(error::error(self.line, "Unexpected EOF"))
+        } else {
+            None
+        }
     }
 
     fn string(&mut self) -> Option<Result<Token>> {
@@ -342,6 +364,32 @@ mod tests {
                 Token::new(TokenKind::And, "and".to_string(), 1),
                 Token::new(TokenKind::Identifier, "aluzja".to_string(), 1),
                 Token::new(TokenKind::Identifier, "And".to_string(), 1),
+                Token::new(TokenKind::Eof, "".to_string(), 1)
+            ]
+        )
+    }
+
+    #[test]
+    fn block_comment_works() {
+        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens("a /* x y */ b").collect();
+        assert_eq!(
+            tokens.unwrap(),
+            vec![
+                Token::new(TokenKind::Identifier, "a".to_string(), 1),
+                Token::new(TokenKind::Identifier, "b".to_string(), 1),
+                Token::new(TokenKind::Eof, "".to_string(), 1)
+            ]
+        )
+    }
+
+    #[test]
+    fn nested_block_comment_works() {
+        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens("a /* /* x */ y */ b").collect();
+        assert_eq!(
+            tokens.unwrap(),
+            vec![
+                Token::new(TokenKind::Identifier, "a".to_string(), 1),
+                Token::new(TokenKind::Identifier, "b".to_string(), 1),
                 Token::new(TokenKind::Eof, "".to_string(), 1)
             ]
         )
