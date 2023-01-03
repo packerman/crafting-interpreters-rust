@@ -5,7 +5,7 @@ use rustyline::{error::ReadlineError, Editor};
 
 use crate::walk_tree::exit_code;
 
-use super::scanner::Scanner;
+use super::{parser::Parser, scanner::Scanner};
 
 pub struct Lox<'a> {
     scanner: Scanner<'a>,
@@ -60,10 +60,21 @@ impl<'a> Lox<'a> {
     }
 
     fn run(&self, source: String) -> Result<()> {
-        self.scanner
+        let tokens: Vec<_> = self
+            .scanner
             .scan_tokens(&source)
             .into_iter()
-            .for_each(|token| println!("{:#?}", token));
+            .filter_map(|result| match result {
+                Ok(token) => Some(token),
+                Err(err) => {
+                    eprintln!("Lexer error: {}", err);
+                    None
+                }
+            })
+            .collect();
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse()?;
+        println!("{:#?}", expr);
         Ok(())
     }
 }

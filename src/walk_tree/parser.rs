@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 
 use super::{error, expr::Expr, token::Token, token_kind::TokenKind};
 
-struct Parser {
+pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
 }
@@ -18,29 +18,58 @@ impl Parser {
     const TERM_OPERATORS: [TokenKind; 2] = [TokenKind::Minus, TokenKind::Plus];
     const FACTOR_OPERATORS: [TokenKind; 2] = [TokenKind::Slash, TokenKind::Star];
     const UNARY_OPERATORS: [TokenKind; 2] = [TokenKind::Bang, TokenKind::Minus];
+    const SYNCHRONIZE: [TokenKind; 8] = [
+        TokenKind::Class,
+        TokenKind::Fun,
+        TokenKind::Var,
+        TokenKind::For,
+        TokenKind::If,
+        TokenKind::While,
+        TokenKind::Print,
+        TokenKind::Return,
+    ];
 
     pub fn new(tokens: Vec<Token>) -> Self {
         Self { tokens, current: 0 }
     }
 
-    pub fn expression(&mut self) -> Result<Box<Expr>> {
+    pub fn parse(&mut self) -> Result<Box<Expr>> {
+        self.expression()
+    }
+
+    fn expression(&mut self) -> Result<Box<Expr>> {
         self.equality()
     }
 
     fn equality(&mut self) -> Result<Box<Expr>> {
-        self.left_assoc(&Self::EQUALITY_OPERATORS, Self::comparison)
+        self.binary(&Self::EQUALITY_OPERATORS, Self::comparison)
     }
 
     fn comparison(&mut self) -> Result<Box<Expr>> {
-        self.left_assoc(&Self::COMPARISON_OPERATORS, Self::term)
+        self.binary(&Self::COMPARISON_OPERATORS, Self::term)
     }
 
     fn term(&mut self) -> Result<Box<Expr>> {
-        self.left_assoc(&Self::TERM_OPERATORS, Self::factor)
+        self.binary(&Self::TERM_OPERATORS, Self::factor)
     }
 
     fn factor(&mut self) -> Result<Box<Expr>> {
-        self.left_assoc(&Self::FACTOR_OPERATORS, Self::unary)
+        self.binary(&Self::FACTOR_OPERATORS, Self::unary)
+    }
+
+    fn binary<F>(&mut self, operators: &[TokenKind], mut operand: F) -> Result<Box<Expr>>
+    where
+        F: FnMut(&mut Self) -> Result<Box<Expr>>,
+    {
+        let mut expr = operand(self)?;
+        while self.match_any(operators) {
+            expr = Box::new(Expr::Binary(
+                expr,
+                self.previous().to_owned(),
+                operand(self)?,
+            ));
+        }
+        Ok(expr)
     }
 
     fn unary(&mut self) -> Result<Box<Expr>> {
@@ -69,20 +98,9 @@ impl Parser {
             })?;
             Expr::Grouping(expr)
         } else {
-            todo!()
+            self.peek().error("Expect expression")?
         };
         Ok(Box::new(expr))
-    }
-
-    fn consume<M>(&mut self, kind: &TokenKind, message: M) -> Result<&Token>
-    where
-        M: Fn() -> String,
-    {
-        if self.check(kind) {
-            Ok(self.advance())
-        } else {
-            self.peek().error(&message())
-        }
     }
 
     fn literal(&mut self) -> Option<Expr> {
@@ -101,21 +119,6 @@ impl Parser {
         expr
     }
 
-    fn left_assoc<F>(&mut self, operators: &[TokenKind], mut operand: F) -> Result<Box<Expr>>
-    where
-        F: FnMut(&mut Self) -> Result<Box<Expr>>,
-    {
-        let mut expr = operand(self)?;
-        while self.match_any(operators) {
-            expr = Box::new(Expr::Binary(
-                expr,
-                self.previous().to_owned(),
-                operand(self)?,
-            ));
-        }
-        Ok(expr)
-    }
-
     fn match_any(&mut self, kinds: &[TokenKind]) -> bool {
         for kind in kinds {
             if self.check(kind) {
@@ -132,6 +135,17 @@ impl Parser {
             true
         } else {
             return false;
+        }
+    }
+
+    fn consume<M>(&mut self, kind: &TokenKind, message: M) -> Result<&Token>
+    where
+        M: Fn() -> String,
+    {
+        if self.check(kind) {
+            Ok(self.advance())
+        } else {
+            self.peek().error(&message())
         }
     }
 
@@ -160,5 +174,19 @@ impl Parser {
 
     fn previous(&self) -> &Token {
         &self.tokens[self.current - 1]
+    }
+
+    fn synchronize(&mut self) {
+        self.advance();
+
+        while !self.is_at_end() {
+            if self.previous().kind == TokenKind::Semicolon {
+                return;
+            }
+            if Self::SYNCHRONIZE.contains(&self.peek().kind) {
+                return;
+            }
+            self.advance();
+        }
     }
 }
