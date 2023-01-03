@@ -1,8 +1,10 @@
-use super::token_kind::TokenKind;
+use anyhow::Result;
 
-#[derive(Debug, PartialEq)]
+use super::{error, token_kind::TokenKind};
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
-    kind: TokenKind,
+    pub kind: TokenKind,
     lexeme: String,
     line: usize,
 }
@@ -12,7 +14,11 @@ impl Token {
         Self { kind, lexeme, line }
     }
 
-    pub fn is_eof(&self) -> bool {
-        self.kind == TokenKind::Eof
+    pub fn error<T>(&self, message: &str) -> Result<T> {
+        if self.kind == TokenKind::Eof {
+            error::error_at(self.line, " at end", message)
+        } else {
+            error::error_at(self.line, &format!(" at '{}'", self.lexeme), message)
+        }
     }
 }
