@@ -32,11 +32,10 @@ impl Parser {
         todo!()
     }
 
-    fn left_assoc(
-        &mut self,
-        operators: &[TokenKind],
-        operand: fn(&mut Parser) -> Box<Expr>,
-    ) -> Box<Expr> {
+    fn left_assoc<F>(&mut self, operators: &[TokenKind], mut operand: F) -> Box<Expr>
+    where
+        F: FnMut(&mut Self) -> Box<Expr>,
+    {
         let mut expr = operand(self);
         while self.match_token(operators) {
             let operator = self.previous().to_owned();
