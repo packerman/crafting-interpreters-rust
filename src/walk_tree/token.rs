@@ -1,6 +1,6 @@
 use super::token_kind::TokenKind;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     kind: TokenKind,
     lexeme: String,
@@ -12,7 +12,7 @@ impl Token {
         Self { kind, lexeme, line }
     }
 
-    pub fn is_eof(&self) -> bool {
-        self.kind == TokenKind::Eof
+    pub fn kind(&self) -> &TokenKind {
+        &self.kind
     }
 }
