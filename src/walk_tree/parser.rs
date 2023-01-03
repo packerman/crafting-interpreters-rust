@@ -1,6 +1,6 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
-use super::{error, expr::Expr, token::Token, token_kind::TokenKind};
+use super::{expr::Expr, token::Token, token_kind::TokenKind};
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -126,7 +126,7 @@ impl Parser {
                 return true;
             }
         }
-        return false;
+        false
     }
 
     fn match_single(&mut self, kind: &TokenKind) -> bool {
@@ -134,7 +134,7 @@ impl Parser {
             self.advance();
             true
         } else {
-            return false;
+            false
         }
     }
 
