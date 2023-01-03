@@ -84,11 +84,11 @@ impl Parser {
 
     fn primary(&mut self) -> Result<Box<Expr>> {
         let expr = if self.match_single(&TokenKind::False) {
-            Expr::Boolean(false)
+            Expr::from(false)
         } else if self.match_single(&TokenKind::True) {
-            Expr::Boolean(true)
+            Expr::from(true)
         } else if self.match_single(&TokenKind::Nil) {
-            Expr::Nil
+            Expr::from(())
         } else if let Some(literal) = self.literal() {
             literal
         } else if self.match_single(&TokenKind::LeftParen) {
@@ -107,9 +107,9 @@ impl Parser {
         let expr = if self.is_at_end() {
             None
         } else if let TokenKind::Number(number) = self.peek().kind {
-            Some(Expr::Number(number))
+            Some(Expr::from(number))
         } else if let TokenKind::String(string) = &self.peek().kind {
-            Some(Expr::String(string.into()))
+            Some(Expr::from(string.as_str()))
         } else {
             None
         };
@@ -188,5 +188,82 @@ impl Parser {
             }
             self.advance();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::walk_tree::scanner::Scanner;
+
+    use super::*;
+
+    #[test]
+    fn parsing_literals_works() {
+        assert_eq!(test_parse_expr("2").unwrap().as_ref(), &Expr::from(2.0));
+        assert_eq!(test_parse_expr("true").unwrap().as_ref(), &Expr::from(true));
+        assert_eq!(
+            test_parse_expr("false").unwrap().as_ref(),
+            &Expr::from(false)
+        );
+        assert_eq!(test_parse_expr("nil").unwrap().as_ref(), &Expr::from(()));
+        assert_eq!(
+            test_parse_expr("\"abc\"").unwrap().as_ref(),
+            &Expr::from("abc")
+        );
+    }
+
+    #[test]
+    fn parsing_expressions_works() {
+        assert_eq!(
+            test_parse_expr("2+2").unwrap().as_ref(),
+            &Expr::Binary(
+                Box::new(Expr::from(2.0)),
+                Token::new(TokenKind::Plus, "+".into(), 1),
+                Box::new(Expr::from(2.0))
+            )
+        );
+        assert_eq!(
+            test_parse_expr("1+2*3").unwrap().as_ref(),
+            &Expr::Binary(
+                Box::new(Expr::from(1.0)),
+                Token::new(TokenKind::Plus, "+".into(), 1),
+                Box::new(Expr::Binary(
+                    Box::new(Expr::from(2.0)),
+                    Token::new(TokenKind::Star, "*".into(), 1),
+                    Box::new(Expr::from(3.0))
+                ))
+            )
+        );
+        assert_eq!(
+            test_parse_expr("(1+2)*3").unwrap().as_ref(),
+            &Expr::Binary(
+                Box::new(Expr::Grouping(Box::new(Expr::Binary(
+                    Box::new(Expr::from(1.0)),
+                    Token::new(TokenKind::Plus, "+".into(), 1),
+                    Box::new(Expr::from(2.0))
+                )))),
+                Token::new(TokenKind::Star, "*".into(), 1),
+                Box::new(Expr::from(3.0))
+            )
+        );
+        assert_eq!(
+            test_parse_expr("1 + 2 + 3").unwrap().as_ref(),
+            &Expr::Binary(
+                Box::new(Expr::Binary(
+                    Box::new(Expr::from(1.0)),
+                    Token::new(TokenKind::Plus, "+".into(), 1),
+                    Box::new(Expr::from(2.0))
+                )),
+                Token::new(TokenKind::Plus, "+".into(), 1),
+                Box::new(Expr::from(3.0)),
+            )
+        );
+    }
+
+    fn test_parse_expr(input: &str) -> Result<Box<Expr>> {
+        let scanner = Scanner::new();
+        let tokens: Result<Vec<_>> = scanner.scan_tokens(input).collect();
+        let mut parser = Parser::new(tokens?);
+        parser.parse()
     }
 }
