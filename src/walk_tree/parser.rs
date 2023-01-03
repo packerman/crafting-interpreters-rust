@@ -1,4 +1,6 @@
-use super::{expr::Expr, token::Token, token_kind::TokenKind};
+use anyhow::{anyhow, Result};
+
+use super::{error, expr::Expr, token::Token, token_kind::TokenKind};
 
 struct Parser {
     tokens: Vec<Token>,
@@ -6,46 +8,115 @@ struct Parser {
 }
 
 impl Parser {
+    const EQUALITY_OPERATORS: [TokenKind; 2] = [TokenKind::BangEqual, TokenKind::EqualEqual];
+    const COMPARISON_OPERATORS: [TokenKind; 4] = [
+        TokenKind::Greater,
+        TokenKind::GreaterEqual,
+        TokenKind::Less,
+        TokenKind::LessEqual,
+    ];
+    const TERM_OPERATORS: [TokenKind; 2] = [TokenKind::Minus, TokenKind::Plus];
+    const FACTOR_OPERATORS: [TokenKind; 2] = [TokenKind::Slash, TokenKind::Star];
+    const UNARY_OPERATORS: [TokenKind; 2] = [TokenKind::Bang, TokenKind::Minus];
+
     pub fn new(tokens: Vec<Token>) -> Self {
         Self { tokens, current: 0 }
     }
 
-    pub fn expression(&mut self) -> Box<Expr> {
+    pub fn expression(&mut self) -> Result<Box<Expr>> {
         self.equality()
     }
 
-    fn equality(&mut self) -> Box<Expr> {
-        // let mut expr = self.comparison();
-        // while self.match_token(&[TokenKind::BangEqual, TokenKind::EqualEqual]) {
-        //     let operator = self.previous();
-        //     let right = self.comparison();
-        //     expr = Box::new(Expr::Binary(expr, operator.to_owned(), right));
-        // }
-        // expr
-        self.left_assoc(
-            &[TokenKind::BangEqual, TokenKind::EqualEqual],
-            Self::comparison,
-        )
+    fn equality(&mut self) -> Result<Box<Expr>> {
+        self.left_assoc(&Self::EQUALITY_OPERATORS, Self::comparison)
     }
 
-    fn comparison(&mut self) -> Box<Expr> {
-        todo!()
+    fn comparison(&mut self) -> Result<Box<Expr>> {
+        self.left_assoc(&Self::COMPARISON_OPERATORS, Self::term)
     }
 
-    fn left_assoc<F>(&mut self, operators: &[TokenKind], mut operand: F) -> Box<Expr>
-    where
-        F: FnMut(&mut Self) -> Box<Expr>,
-    {
-        let mut expr = operand(self);
-        while self.match_token(operators) {
+    fn term(&mut self) -> Result<Box<Expr>> {
+        self.left_assoc(&Self::TERM_OPERATORS, Self::factor)
+    }
+
+    fn factor(&mut self) -> Result<Box<Expr>> {
+        self.left_assoc(&Self::FACTOR_OPERATORS, Self::unary)
+    }
+
+    fn unary(&mut self) -> Result<Box<Expr>> {
+        if self.match_any(&Self::UNARY_OPERATORS) {
             let operator = self.previous().to_owned();
-            let right = operand(self);
-            expr = Box::new(Expr::Binary(expr, operator, right));
+            let right = self.unary()?;
+            Ok(Box::new(Expr::Unary(operator, right)))
+        } else {
+            self.primary()
+        }
+    }
+
+    fn primary(&mut self) -> Result<Box<Expr>> {
+        let expr = if self.match_single(&TokenKind::False) {
+            Expr::Boolean(false)
+        } else if self.match_single(&TokenKind::True) {
+            Expr::Boolean(true)
+        } else if self.match_single(&TokenKind::Nil) {
+            Expr::Nil
+        } else if let Some(literal) = self.literal() {
+            literal
+        } else if self.match_single(&TokenKind::LeftParen) {
+            let expr = self.expression()?;
+            self.consume(&TokenKind::RightParen, || {
+                "Expect ')' after expression.".into()
+            })?;
+            Expr::Grouping(expr)
+        } else {
+            todo!()
+        };
+        Ok(Box::new(expr))
+    }
+
+    fn consume<M>(&mut self, kind: &TokenKind, message: M) -> Result<&Token>
+    where
+        M: Fn() -> String,
+    {
+        if self.check(kind) {
+            Ok(self.advance())
+        } else {
+            self.peek().error(&message())
+        }
+    }
+
+    fn literal(&mut self) -> Option<Expr> {
+        let expr = if self.is_at_end() {
+            None
+        } else if let TokenKind::Number(number) = self.peek().kind {
+            Some(Expr::Number(number))
+        } else if let TokenKind::String(string) = &self.peek().kind {
+            Some(Expr::String(string.into()))
+        } else {
+            None
+        };
+        if expr.is_some() {
+            self.advance();
         }
         expr
     }
 
-    fn match_token(&mut self, kinds: &[TokenKind]) -> bool {
+    fn left_assoc<F>(&mut self, operators: &[TokenKind], mut operand: F) -> Result<Box<Expr>>
+    where
+        F: FnMut(&mut Self) -> Result<Box<Expr>>,
+    {
+        let mut expr = operand(self)?;
+        while self.match_any(operators) {
+            expr = Box::new(Expr::Binary(
+                expr,
+                self.previous().to_owned(),
+                operand(self)?,
+            ));
+        }
+        Ok(expr)
+    }
+
+    fn match_any(&mut self, kinds: &[TokenKind]) -> bool {
         for kind in kinds {
             if self.check(kind) {
                 self.advance();
@@ -55,11 +126,20 @@ impl Parser {
         return false;
     }
 
+    fn match_single(&mut self, kind: &TokenKind) -> bool {
+        if self.check(kind) {
+            self.advance();
+            true
+        } else {
+            return false;
+        }
+    }
+
     fn check(&self, kind: &TokenKind) -> bool {
         if self.is_at_end() {
             false
         } else {
-            self.peek().kind() == kind
+            &self.peek().kind == kind
         }
     }
 
@@ -71,7 +151,7 @@ impl Parser {
     }
 
     fn is_at_end(&self) -> bool {
-        self.peek().kind() == &TokenKind::Eof
+        self.peek().kind == TokenKind::Eof
     }
 
     fn peek(&self) -> &Token {
