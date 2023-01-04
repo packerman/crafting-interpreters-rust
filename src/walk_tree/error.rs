@@ -1,15 +1,17 @@
-use std::cell::Cell;
+use std::{cell::Cell, error::Error, fmt::Display};
 
 use super::{token::Token, token_kind::TokenKind};
 
 pub struct ErrorReporter {
     had_error: Cell<bool>,
+    had_runtime_error: Cell<bool>,
 }
 
 impl ErrorReporter {
     pub fn new() -> Self {
         Self {
             had_error: Cell::new(false),
+            had_runtime_error: Cell::new(false),
         }
     }
 
@@ -23,6 +25,7 @@ impl ErrorReporter {
 
     pub fn reset(&self) {
         self.had_error.set(false);
+        self.had_runtime_error.set(false);
     }
 
     fn report(&self, line: usize, where_part: &str, message: &str) {
@@ -37,4 +40,29 @@ impl ErrorReporter {
             self.report(token.line, &format!(" at '{}'", token.lexeme), message)
         }
     }
+
+    pub fn runtime_error(&self, error: &RuntimeError) {
+        eprintln!("{}\n[line {}]", error.message, error.token.line);
+        self.had_runtime_error.set(true);
+    }
 }
+
+#[derive(Debug)]
+pub struct RuntimeError<'a> {
+    pub token: Token,
+    pub message: &'a str,
+}
+
+impl<'a> RuntimeError<'a> {
+    pub fn new(token: Token, message: &'a str) -> Self {
+        Self { token, message }
+    }
+}
+
+impl Display for RuntimeError<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+impl Error for RuntimeError<'_> {}

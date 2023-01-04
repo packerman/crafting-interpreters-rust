@@ -1,5 +1,3 @@
-use anyhow::Result;
-
 use super::{error::ErrorReporter, expr::Expr, token::Token, token_kind::TokenKind};
 
 pub struct Parser<'a> {

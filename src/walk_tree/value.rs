@@ -95,7 +95,8 @@ where
     Value: From<T>,
     <T as TryFrom<Value>>::Error: std::fmt::Debug,
 {
-    Value::from(op(right.try_into().unwrap()))
+    let value = Value::from(op(right.try_into().unwrap()));
+    value
 }
 
 pub fn binary_operation<T>(operation: fn(T, T) -> T, left: Value, right: Value) -> Value

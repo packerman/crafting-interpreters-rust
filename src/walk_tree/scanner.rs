@@ -1,12 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::Result;
-
-use super::{
-    error::{self, ErrorReporter},
-    token::Token,
-    token_kind::TokenKind,
-};
+use super::{error::ErrorReporter, token::Token, token_kind::TokenKind};
 
 pub struct Scanner<'a> {
     keywords: HashMap<&'a str, TokenKind>,
