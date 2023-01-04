@@ -5,7 +5,7 @@ use super::{
     value::{self, Value},
 };
 
-pub fn interpret(expr: &Expr) -> RValue {}
+// pub fn interpret(expr: &Expr) -> Value {}
 
 fn interpret_expr(expr: &Expr) -> Value {
     match expr {
