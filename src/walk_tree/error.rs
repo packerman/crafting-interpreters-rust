@@ -1,6 +1,6 @@
 use std::{cell::Cell, error::Error, fmt::Display};
 
-use super::{token::Token, token_kind::TokenKind};
+use super::token::{Token, TokenKind};
 
 pub struct ErrorReporter {
     had_error: Cell<bool>,

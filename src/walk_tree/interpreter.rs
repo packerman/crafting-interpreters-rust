@@ -5,8 +5,7 @@ use crate::walk_tree::error::RuntimeError;
 use super::{
     error::ErrorReporter,
     expr::Expr,
-    token::Token,
-    token_kind::TokenKind,
+    token::{Token, TokenKind},
     value::{self, Value},
 };
 

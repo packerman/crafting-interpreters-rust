@@ -1,4 +1,8 @@
-use super::{error::ErrorReporter, expr::Expr, token::Token, token_kind::TokenKind};
+use super::{
+    error::ErrorReporter,
+    expr::Expr,
+    token::{Token, TokenKind},
+};
 
 pub struct Parser<'a> {
     tokens: Vec<Token>,
