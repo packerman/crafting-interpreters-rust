@@ -149,3 +149,63 @@ impl<'a> Interpreter<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::walk_tree::{parser::Parser, scanner::Scanner};
+
+    use super::*;
+
+    #[test]
+    fn arithmetic() {
+        assert_evaluates_to("2", 2.0);
+        assert_evaluates_to("2+3", 5.0);
+        assert_evaluates_to("2*3", 6.0);
+        assert_evaluates_to("1+2*3", 7.0);
+        assert_evaluates_to("(1+2)*3", 9.0);
+        assert_evaluates_to("1*2+3", 5.0);
+        assert_evaluates_to("1+2+3", 6.0);
+    }
+
+    #[test]
+    fn comparison_works() {
+        assert_evaluates_to("2 == 2", true);
+        assert_evaluates_to("2 != 2", false);
+        assert_evaluates_to("2 < 2", false);
+        assert_evaluates_to("2 <= 2", true);
+        assert_evaluates_to("2 > 2", false);
+        assert_evaluates_to("2 >= 2", true);
+        assert_evaluates_to("2 == 3", false);
+        assert_evaluates_to("2 != 3", true);
+        assert_evaluates_to("2 < 3", true);
+        assert_evaluates_to("2 <= 3", true);
+        assert_evaluates_to("2 > 3", false);
+        assert_evaluates_to("2 >= 3", false);
+    }
+
+    #[test]
+    fn ternary_works() {
+        assert_evaluates_to("2 < 3 ? 2 * 3 : 2 + 3", 6.0);
+        assert_evaluates_to("2 > 3 ? 2 * 3 : 2 + 3", 5.0);
+    }
+
+    fn assert_evaluates_to<T>(source: &str, value: T)
+    where
+        Value: From<T>,
+    {
+        assert_eq!(
+            self::test_interpret_expr(source).unwrap(),
+            Value::from(value)
+        )
+    }
+
+    fn test_interpret_expr(source: &str) -> Option<Value> {
+        let error_reporter = ErrorReporter::new();
+        let scanner = Scanner::new(&error_reporter);
+        let tokens: Vec<_> = scanner.scan_tokens(source).collect();
+        let mut parser = Parser::new(tokens, &error_reporter);
+        let tree = parser.parse()?;
+        let interpreter = Interpreter::new(&error_reporter);
+        interpreter.interpret_expr(&tree).ok()
+    }
+}
