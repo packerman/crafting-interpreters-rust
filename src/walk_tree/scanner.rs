@@ -2,21 +2,27 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 
-use super::{error, token::Token, token_kind::TokenKind};
+use super::{
+    error::{self, ErrorReporter},
+    token::Token,
+    token_kind::TokenKind,
+};
 
 pub struct Scanner<'a> {
     keywords: HashMap<&'a str, TokenKind>,
+    error_reporter: &'a ErrorReporter,
 }
 
 impl<'a> Scanner<'a> {
-    pub fn new() -> Self {
+    pub fn new(error_reporter: &'a ErrorReporter) -> Self {
         Self {
             keywords: Self::keywords(),
+            error_reporter,
         }
     }
 
     pub fn scan_tokens(&self, source: &str) -> ScanTokens {
-        ScanTokens::new(source, &self.keywords)
+        ScanTokens::new(source, &self.keywords, self.error_reporter)
     }
 
     fn keywords() -> HashMap<&'a str, TokenKind> {
@@ -41,12 +47,6 @@ impl<'a> Scanner<'a> {
     }
 }
 
-impl Default for Scanner<'_> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 pub struct ScanTokens<'a> {
     source: Vec<char>,
     start: usize,
@@ -54,10 +54,15 @@ pub struct ScanTokens<'a> {
     line: usize,
     consumed: bool,
     keywords: &'a HashMap<&'a str, TokenKind>,
+    error_reporter: &'a ErrorReporter,
 }
 
 impl<'a> ScanTokens<'a> {
-    pub fn new(source: &str, keywords: &'a HashMap<&'a str, TokenKind>) -> Self {
+    pub fn new(
+        source: &str,
+        keywords: &'a HashMap<&'a str, TokenKind>,
+        error_reporter: &'a ErrorReporter,
+    ) -> Self {
         Self {
             source: source.chars().collect(),
             keywords,
@@ -65,6 +70,7 @@ impl<'a> ScanTokens<'a> {
             current: 0,
             line: 1,
             consumed: false,
+            error_reporter,
         }
     }
 
@@ -72,7 +78,7 @@ impl<'a> ScanTokens<'a> {
         self.current >= self.source.len()
     }
 
-    fn scan_token(&mut self) -> Option<Result<Token>> {
+    fn scan_token(&mut self) -> Option<Token> {
         let ch = self.advance();
         match ch {
             '(' => self.emit_token(TokenKind::LeftParen),
@@ -112,20 +118,21 @@ impl<'a> ScanTokens<'a> {
                 } else if ch.is_ascii_alphabetic() {
                     self.identifier()
                 } else {
-                    Some(error::error(self.line, "Unexpected character"))
+                    self.error_reporter.error(self.line, "Unexpected character");
+                    None
                 }
             }
         }
     }
 
-    fn comment(&mut self) -> Option<Result<Token>> {
+    fn comment(&mut self) -> Option<Token> {
         while self.peek() != '\n' && !self.is_at_end() {
             self.advance();
         }
         None
     }
 
-    fn block_comment(&mut self) -> Option<Result<Token>> {
+    fn block_comment(&mut self) -> Option<Token> {
         let mut nest = 1;
         while !self.is_at_end() && nest > 0 {
             let ch = self.advance();
@@ -139,13 +146,12 @@ impl<'a> ScanTokens<'a> {
             }
         }
         if nest > 0 {
-            Some(error::error(self.line, "Unexpected EOF"))
-        } else {
-            None
+            self.error_reporter.error(self.line, "Unexpected EOF");
         }
+        None
     }
 
-    fn string(&mut self) -> Option<Result<Token>> {
+    fn string(&mut self) -> Option<Token> {
         while self.peek() != '"' && !self.is_at_end() {
             if self.peek() == '\n' {
                 self.line += 1;
@@ -153,7 +159,8 @@ impl<'a> ScanTokens<'a> {
             self.advance();
         }
         if self.is_at_end() {
-            Some(error::error(self.line, "Unterminated string"))
+            self.error_reporter.error(self.line, "Unterminated string");
+            None
         } else {
             self.advance();
             let value = self.copy_slice(self.start + 1, self.current - 1);
@@ -161,7 +168,7 @@ impl<'a> ScanTokens<'a> {
         }
     }
 
-    fn number(&mut self) -> Option<Result<Token>> {
+    fn number(&mut self) -> Option<Token> {
         while self.peek().is_ascii_digit() {
             self.advance();
         }
@@ -175,7 +182,7 @@ impl<'a> ScanTokens<'a> {
         self.emit_token(TokenKind::Number(value))
     }
 
-    fn identifier(&mut self) -> Option<Result<Token>> {
+    fn identifier(&mut self) -> Option<Token> {
         while self.peek().is_ascii_alphanumeric() {
             self.advance();
         }
@@ -223,8 +230,8 @@ impl<'a> ScanTokens<'a> {
         }
     }
 
-    fn emit_token(&self, kind: TokenKind) -> Option<Result<Token>> {
-        Some(Ok(Token::new(kind, self.current_lexeme(), self.line)))
+    fn emit_token(&self, kind: TokenKind) -> Option<Token> {
+        Some(Token::new(kind, self.current_lexeme(), self.line))
     }
 
     fn cond_emit(
@@ -232,7 +239,7 @@ impl<'a> ScanTokens<'a> {
         if_match: char,
         then_emit: TokenKind,
         else_emit: TokenKind,
-    ) -> Option<Result<Token>> {
+    ) -> Option<Token> {
         let token_kind = if self.match_char(if_match) {
             then_emit
         } else {
@@ -249,7 +256,7 @@ impl<'a> ScanTokens<'a> {
         self.copy_slice(self.start, self.current)
     }
 
-    fn emit_eof(&mut self) -> Option<Result<Token>> {
+    fn emit_eof(&mut self) -> Option<Token> {
         if self.consumed {
             None
         } else {
@@ -260,7 +267,7 @@ impl<'a> ScanTokens<'a> {
 }
 
 impl<'a> Iterator for ScanTokens<'a> {
-    type Item = Result<Token>;
+    type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -282,18 +289,15 @@ mod tests {
 
     #[test]
     fn comment_works() {
-        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens("// this is a comment").collect();
-        assert_eq!(
-            tokens.unwrap(),
-            vec![Token::new(TokenKind::Eof, "".to_string(), 1)]
-        )
+        let tokens = self::scan_tokens("// this is a comment");
+        assert_eq!(tokens, vec![Token::new(TokenKind::Eof, "".to_string(), 1)])
     }
 
     #[test]
     fn grouping_stuff_works() {
-        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens("(( )){}").collect();
+        let tokens = self::scan_tokens("(( )){}");
         assert_eq!(
-            tokens.unwrap(),
+            tokens,
             vec![
                 Token::new(TokenKind::LeftParen, "(".to_string(), 1),
                 Token::new(TokenKind::LeftParen, "(".to_string(), 1),
@@ -308,9 +312,9 @@ mod tests {
 
     #[test]
     fn operator_works() {
-        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens("!*+-/=<> <= ==").collect();
+        let tokens = self::scan_tokens("!*+-/=<> <= ==");
         assert_eq!(
-            tokens.unwrap(),
+            tokens,
             vec![
                 Token::new(TokenKind::Bang, "!".to_string(), 1),
                 Token::new(TokenKind::Star, "*".to_string(), 1),
@@ -329,9 +333,9 @@ mod tests {
 
     #[test]
     fn string_works() {
-        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens(r#""+ -""#).collect();
+        let tokens = self::scan_tokens(r#""+ -""#);
         assert_eq!(
-            tokens.unwrap(),
+            tokens,
             vec![
                 Token::new(
                     TokenKind::String("+ -".to_string()),
@@ -345,9 +349,9 @@ mod tests {
 
     #[test]
     fn numbers_works() {
-        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens("3.14 + 1").collect();
+        let tokens = self::scan_tokens("3.14 + 1");
         assert_eq!(
-            tokens.unwrap(),
+            tokens,
             vec![
                 Token::new(TokenKind::Number(3.14), "3.14".to_string(), 1),
                 Token::new(TokenKind::Plus, "+".to_string(), 1),
@@ -359,11 +363,9 @@ mod tests {
 
     #[test]
     fn identifier_works() {
-        let tokens: Result<Vec<_>> = Scanner::new()
-            .scan_tokens("and andaluzja and aluzja And")
-            .collect();
+        let tokens = self::scan_tokens("and andaluzja and aluzja And");
         assert_eq!(
-            tokens.unwrap(),
+            tokens,
             vec![
                 Token::new(TokenKind::And, "and".to_string(), 1),
                 Token::new(TokenKind::Identifier, "andaluzja".to_string(), 1),
@@ -377,9 +379,9 @@ mod tests {
 
     #[test]
     fn block_comment_works() {
-        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens("a /* x y */ b").collect();
+        let tokens = self::scan_tokens("a /* x y */ b");
         assert_eq!(
-            tokens.unwrap(),
+            tokens,
             vec![
                 Token::new(TokenKind::Identifier, "a".to_string(), 1),
                 Token::new(TokenKind::Identifier, "b".to_string(), 1),
@@ -390,14 +392,19 @@ mod tests {
 
     #[test]
     fn nested_block_comment_works() {
-        let tokens: Result<Vec<_>> = Scanner::new().scan_tokens("a /* /* x */ y */ b").collect();
+        let tokens = self::scan_tokens("a /* /* x */ y */ b");
         assert_eq!(
-            tokens.unwrap(),
+            tokens,
             vec![
                 Token::new(TokenKind::Identifier, "a".to_string(), 1),
                 Token::new(TokenKind::Identifier, "b".to_string(), 1),
                 Token::new(TokenKind::Eof, "".to_string(), 1)
             ]
         )
+    }
+
+    fn scan_tokens(source: &str) -> Vec<Token> {
+        let error_reporter = ErrorReporter::new();
+        Scanner::new(&error_reporter).scan_tokens(source).collect()
     }
 }

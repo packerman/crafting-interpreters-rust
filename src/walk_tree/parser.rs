@@ -1,13 +1,14 @@
 use anyhow::Result;
 
-use super::{expr::Expr, token::Token, token_kind::TokenKind};
+use super::{error::ErrorReporter, expr::Expr, token::Token, token_kind::TokenKind};
 
-pub struct Parser {
+pub struct Parser<'a> {
     tokens: Vec<Token>,
     current: usize,
+    error_reporter: &'a ErrorReporter,
 }
 
-impl Parser {
+impl<'a> Parser<'a> {
     const EQUALITY_OPERATORS: [TokenKind; 2] = [TokenKind::BangEqual, TokenKind::EqualEqual];
     const COMPARISON_OPERATORS: [TokenKind; 4] = [
         TokenKind::Greater,
@@ -29,37 +30,41 @@ impl Parser {
         TokenKind::Return,
     ];
 
-    pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, current: 0 }
+    pub fn new(tokens: Vec<Token>, error_reporter: &'a ErrorReporter) -> Self {
+        Self {
+            tokens,
+            current: 0,
+            error_reporter,
+        }
     }
 
-    pub fn parse(&mut self) -> Result<Box<Expr>> {
+    pub fn parse(&mut self) -> Option<Box<Expr>> {
         self.expression()
     }
 
-    fn expression(&mut self) -> Result<Box<Expr>> {
+    fn expression(&mut self) -> Option<Box<Expr>> {
         self.equality()
     }
 
-    fn equality(&mut self) -> Result<Box<Expr>> {
+    fn equality(&mut self) -> Option<Box<Expr>> {
         self.binary(&Self::EQUALITY_OPERATORS, Self::comparison)
     }
 
-    fn comparison(&mut self) -> Result<Box<Expr>> {
+    fn comparison(&mut self) -> Option<Box<Expr>> {
         self.binary(&Self::COMPARISON_OPERATORS, Self::term)
     }
 
-    fn term(&mut self) -> Result<Box<Expr>> {
+    fn term(&mut self) -> Option<Box<Expr>> {
         self.binary(&Self::TERM_OPERATORS, Self::factor)
     }
 
-    fn factor(&mut self) -> Result<Box<Expr>> {
+    fn factor(&mut self) -> Option<Box<Expr>> {
         self.binary(&Self::FACTOR_OPERATORS, Self::unary)
     }
 
-    fn binary<F>(&mut self, operators: &[TokenKind], mut operand: F) -> Result<Box<Expr>>
+    fn binary<F>(&mut self, operators: &[TokenKind], mut operand: F) -> Option<Box<Expr>>
     where
-        F: FnMut(&mut Self) -> Result<Box<Expr>>,
+        F: FnMut(&mut Self) -> Option<Box<Expr>>,
     {
         let mut expr = operand(self)?;
         while self.match_any(operators) {
@@ -69,20 +74,20 @@ impl Parser {
                 operand(self)?,
             ));
         }
-        Ok(expr)
+        Some(expr)
     }
 
-    fn unary(&mut self) -> Result<Box<Expr>> {
+    fn unary(&mut self) -> Option<Box<Expr>> {
         if self.match_any(&Self::UNARY_OPERATORS) {
             let operator = self.previous().to_owned();
             let right = self.unary()?;
-            Ok(Box::new(Expr::Unary(operator, right)))
+            Some(Box::new(Expr::Unary(operator, right)))
         } else {
             self.primary()
         }
     }
 
-    fn primary(&mut self) -> Result<Box<Expr>> {
+    fn primary(&mut self) -> Option<Box<Expr>> {
         let expr = if self.match_single(&TokenKind::False) {
             Expr::from(false)
         } else if self.match_single(&TokenKind::True) {
@@ -98,9 +103,9 @@ impl Parser {
             })?;
             Expr::Grouping(expr)
         } else {
-            self.peek().error("Expect expression")?
+            self.error(self.peek(), "Expect expression")?
         };
-        Ok(Box::new(expr))
+        Some(Box::new(expr))
     }
 
     fn literal(&mut self) -> Option<Expr> {
@@ -138,14 +143,14 @@ impl Parser {
         }
     }
 
-    fn consume<M>(&mut self, kind: &TokenKind, message: M) -> Result<&Token>
+    fn consume<M>(&mut self, kind: &TokenKind, message: M) -> Option<&Token>
     where
         M: Fn() -> String,
     {
         if self.check(kind) {
-            Ok(self.advance())
+            Some(self.advance())
         } else {
-            self.peek().error(&message())
+            self.error(self.peek(), &message())
         }
     }
 
@@ -176,6 +181,11 @@ impl Parser {
         &self.tokens[self.current - 1]
     }
 
+    fn error<T>(&self, token: &Token, message: &str) -> Option<T> {
+        self.error_reporter.token_error(token, message);
+        None
+    }
+
     fn synchronize(&mut self) {
         self.advance();
 
@@ -193,7 +203,7 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::walk_tree::scanner::Scanner;
+    use crate::walk_tree::{error::ErrorReporter, scanner::Scanner};
 
     use super::*;
 
@@ -260,10 +270,11 @@ mod tests {
         );
     }
 
-    fn test_parse_expr(input: &str) -> Result<Box<Expr>> {
-        let scanner = Scanner::new();
-        let tokens: Result<Vec<_>> = scanner.scan_tokens(input).collect();
-        let mut parser = Parser::new(tokens?);
+    fn test_parse_expr(input: &str) -> Option<Box<Expr>> {
+        let error_reporer = ErrorReporter::new();
+        let scanner = Scanner::new(&error_reporer);
+        let tokens: Vec<_> = scanner.scan_tokens(input).collect();
+        let mut parser = Parser::new(tokens, &error_reporer);
         parser.parse()
     }
 }
