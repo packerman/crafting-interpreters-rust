@@ -9,3 +9,7 @@ pub fn usage() -> ExitCode {
 pub fn data_err() -> ExitCode {
     ExitCode::from(65)
 }
+
+pub fn software() -> ExitCode {
+    ExitCode::from(70)
+}

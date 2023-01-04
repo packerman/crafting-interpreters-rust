@@ -27,6 +27,8 @@ impl<'a> Lox<'a> {
         self.run(source);
         Ok(if self.error_reporter.had_error() {
             exit_code::data_err()
+        } else if self.error_reporter.had_runtime_error() {
+            exit_code::software()
         } else {
             ExitCode::SUCCESS
         })

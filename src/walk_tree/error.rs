@@ -19,6 +19,10 @@ impl ErrorReporter {
         self.had_error.get()
     }
 
+    pub fn had_runtime_error(&self) -> bool {
+        self.had_runtime_error.get()
+    }
+
     pub fn error(&self, line: usize, message: &str) {
         self.report(line, "", message);
     }
