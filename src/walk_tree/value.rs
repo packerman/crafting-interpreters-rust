@@ -1,6 +1,8 @@
 use std::fmt::Display;
 
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
+
+use super::error::RuntimeError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -23,13 +25,13 @@ impl From<f64> for Value {
 }
 
 impl TryFrom<Value> for f64 {
-    type Error = anyhow::Error;
+    type Error = RuntimeError;
 
-    fn try_from(value: Value) -> Result<Self> {
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
         if let Value::Number(v) = value {
             Ok(v)
         } else {
-            Err(anyhow!("Expect number."))
+            Err(RuntimeError::new_with_message("Expect number."))
         }
     }
 }
@@ -41,13 +43,13 @@ impl From<String> for Value {
 }
 
 impl TryFrom<Value> for String {
-    type Error = anyhow::Error;
+    type Error = RuntimeError;
 
-    fn try_from(value: Value) -> Result<Self> {
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
         if let Value::String(v) = value {
             Ok(v)
         } else {
-            Err(anyhow!("Expect string."))
+            Err(RuntimeError::new_with_message("Expect number."))
         }
     }
 }
@@ -89,35 +91,39 @@ impl Value {
     }
 }
 
-pub fn unary_operation<T>(op: fn(T) -> T, right: Value) -> Value
+pub fn unary_operation<T>(op: fn(T) -> T, right: Value) -> Result<Value, RuntimeError>
 where
-    T: TryFrom<Value>,
+    T: TryFrom<Value, Error = RuntimeError>,
     Value: From<T>,
     <T as TryFrom<Value>>::Error: std::fmt::Debug,
 {
-    
-    Value::from(op(right.try_into().unwrap()))
+    let value = Value::from(op(right.try_into()?));
+    Ok(value)
 }
 
-pub fn binary_operation<T>(operation: fn(T, T) -> T, left: Value, right: Value) -> Value
+pub fn binary_operation<T>(
+    operation: fn(T, T) -> T,
+    left: Value,
+    right: Value,
+) -> Result<Value, RuntimeError>
 where
-    T: TryFrom<Value>,
+    T: TryFrom<Value, Error = RuntimeError>,
     Value: From<T>,
     <T as TryFrom<Value>>::Error: std::fmt::Debug,
 {
-    Value::from(operation(
-        left.try_into().unwrap(),
-        right.try_into().unwrap(),
-    ))
+    let value = Value::from(operation(left.try_into()?, right.try_into()?));
+    Ok(value)
 }
 
-pub fn binary_relation<T>(relation: fn(T, T) -> bool, left: Value, right: Value) -> Value
+pub fn binary_relation<T>(
+    relation: fn(T, T) -> bool,
+    left: Value,
+    right: Value,
+) -> Result<Value, RuntimeError>
 where
-    T: TryFrom<Value>,
+    T: TryFrom<Value, Error = RuntimeError>,
     <T as TryFrom<Value>>::Error: std::fmt::Debug,
 {
-    Value::from(relation(
-        left.try_into().unwrap(),
-        right.try_into().unwrap(),
-    ))
+    let value = Value::from(relation(left.try_into()?, right.try_into()?));
+    Ok(value)
 }

@@ -42,7 +42,11 @@ impl ErrorReporter {
     }
 
     pub fn runtime_error(&self, error: &RuntimeError) {
-        eprintln!("{}\n[line {}]", error.message, error.token.line);
+        if let Some(token) = &error.token {
+            eprintln!("{}\n[line {}]", error.message, token.line);
+        } else {
+            eprintln!("{}", error.message);
+        }
         self.had_runtime_error.set(true);
     }
 }
@@ -54,21 +58,31 @@ impl Default for ErrorReporter {
 }
 
 #[derive(Debug)]
-pub struct RuntimeError<'a> {
-    pub token: Token,
-    pub message: &'a str,
+pub struct RuntimeError {
+    pub token: Option<Token>,
+    pub message: String,
 }
 
-impl<'a> RuntimeError<'a> {
-    pub fn new(token: Token, message: &'a str) -> Self {
-        Self { token, message }
+impl RuntimeError {
+    pub fn new(token: Token, message: &str) -> Self {
+        Self {
+            token: Some(token),
+            message: String::from(message),
+        }
+    }
+
+    pub fn new_with_message(message: &str) -> Self {
+        Self {
+            token: None,
+            message: String::from(message),
+        }
     }
 }
 
-impl Display for RuntimeError<'_> {
+impl Display for RuntimeError {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         todo!()
     }
 }
 
-impl Error for RuntimeError<'_> {}
+impl Error for RuntimeError {}

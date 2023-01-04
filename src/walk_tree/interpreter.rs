@@ -41,14 +41,14 @@ impl<'a> Interpreter<'a> {
 
     fn interpret_unary(&self, operator: &Token, right: &Expr) -> Result<Value, RuntimeError> {
         let right = self.interpret_expr(right)?;
-        Ok(match operator.kind {
+        match operator.kind {
             TokenKind::Minus => {
                 self.check_number_operand(operator, &right)?;
                 value::unary_operation::<f64>(|a| -a, right)
             }
-            TokenKind::Bang => Value::from(!right.is_truthy()),
+            TokenKind::Bang => Ok(Value::from(!right.is_truthy())),
             _ => unreachable!(),
-        })
+        }
     }
 
     fn interpret_binary(
@@ -59,7 +59,7 @@ impl<'a> Interpreter<'a> {
     ) -> Result<Value, RuntimeError> {
         let left = self.interpret_expr(left)?;
         let right = self.interpret_expr(right)?;
-        Ok(match operator.kind {
+        match operator.kind {
             TokenKind::Minus => {
                 self.check_number_operands(operator, &left, &right)?;
                 value::binary_operation::<f64>(|a, b| a + b, left, right)
@@ -100,10 +100,10 @@ impl<'a> Interpreter<'a> {
                 self.check_number_operands(operator, &left, &right)?;
                 value::binary_relation::<f64>(|a, b| a <= b, left, right)
             }
-            TokenKind::BangEqual => Value::from(left != right),
-            TokenKind::EqualEqual => Value::from(left == right),
+            TokenKind::BangEqual => Ok(Value::from(left != right)),
+            TokenKind::EqualEqual => Ok(Value::from(left == right)),
             _ => unreachable!(),
-        })
+        }
     }
 
     fn check_number_operand(&self, operator: &Token, operand: &Value) -> Result<(), RuntimeError> {
