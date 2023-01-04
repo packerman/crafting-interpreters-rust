@@ -5,28 +5,33 @@ use rustyline::{error::ReadlineError, Editor};
 
 use crate::walk_tree::exit_code;
 
-use super::{parser::Parser, scanner::Scanner};
+use super::{error::ErrorReporter, interpreter::Interpreter, parser::Parser, scanner::Scanner};
 
 pub struct Lox<'a> {
     scanner: Scanner<'a>,
+    interpreter: Interpreter<'a>,
+    error_reporter: &'a ErrorReporter,
 }
 
 impl<'a> Lox<'a> {
-    pub fn new() -> Self {
+    pub fn new(error_reporter: &'a ErrorReporter) -> Self {
         Self {
-            scanner: Scanner::new(),
+            scanner: Scanner::new(error_reporter),
+            interpreter: Interpreter::new(error_reporter),
+            error_reporter,
         }
     }
 
     pub fn run_file(&self, path: &str) -> Result<ExitCode> {
         let source = fs::read_to_string(path)?;
-        let result = if let Err(err) = self.run(source) {
-            eprintln!("Error while running file: {}", err);
+        self.run(source);
+        Ok(if self.error_reporter.had_error() {
             exit_code::data_err()
+        } else if self.error_reporter.had_runtime_error() {
+            exit_code::software()
         } else {
             ExitCode::SUCCESS
-        };
-        Ok(result)
+        })
     }
 
     pub fn run_prompt(&self) -> Result<ExitCode> {
@@ -36,10 +41,8 @@ impl<'a> Lox<'a> {
             match readline {
                 Ok(line) => {
                     editor.add_history_entry(line.as_str());
-                    let result = self.run(line);
-                    if let Err(err) = result {
-                        eprintln!("Run error: {}", err);
-                    }
+                    self.run(line);
+                    self.error_reporter.reset();
                 }
                 Err(ReadlineError::Interrupted) => {
                     println!("CTRL-C");
@@ -59,28 +62,14 @@ impl<'a> Lox<'a> {
         Ok(ExitCode::SUCCESS)
     }
 
-    fn run(&self, source: String) -> Result<()> {
-        let tokens: Vec<_> = self
-            .scanner
-            .scan_tokens(&source)
-            .into_iter()
-            .filter_map(|result| match result {
-                Ok(token) => Some(token),
-                Err(err) => {
-                    eprintln!("Lexer error: {}", err);
-                    None
-                }
-            })
-            .collect();
-        let mut parser = Parser::new(tokens);
+    fn run(&self, source: String) -> Option<()> {
+        let tokens: Vec<_> = self.scanner.scan_tokens(&source).collect();
+        let mut parser = Parser::new(tokens, self.error_reporter);
         let expr = parser.parse()?;
-        println!("{:#?}", expr);
-        Ok(())
-    }
-}
-
-impl Default for Lox<'_> {
-    fn default() -> Self {
-        Self::new()
+        if self.error_reporter.had_error() {
+            return Some(());
+        }
+        self.interpreter.interpret(&expr);
+        Some(())
     }
 }

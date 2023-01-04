@@ -1,13 +1,16 @@
-use anyhow::Result;
+use super::{
+    error::ErrorReporter,
+    expr::Expr,
+    token::{Token, TokenKind},
+};
 
-use super::{expr::Expr, token::Token, token_kind::TokenKind};
-
-pub struct Parser {
+pub struct Parser<'a> {
     tokens: Vec<Token>,
     current: usize,
+    error_reporter: &'a ErrorReporter,
 }
 
-impl Parser {
+impl<'a> Parser<'a> {
     const EQUALITY_OPERATORS: [TokenKind; 2] = [TokenKind::BangEqual, TokenKind::EqualEqual];
     const COMPARISON_OPERATORS: [TokenKind; 4] = [
         TokenKind::Greater,
@@ -29,37 +32,53 @@ impl Parser {
         TokenKind::Return,
     ];
 
-    pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, current: 0 }
+    pub fn new(tokens: Vec<Token>, error_reporter: &'a ErrorReporter) -> Self {
+        Self {
+            tokens,
+            current: 0,
+            error_reporter,
+        }
     }
 
-    pub fn parse(&mut self) -> Result<Box<Expr>> {
+    pub fn parse(&mut self) -> Option<Box<Expr>> {
         self.expression()
     }
 
-    fn expression(&mut self) -> Result<Box<Expr>> {
-        self.equality()
+    fn expression(&mut self) -> Option<Box<Expr>> {
+        self.ternary()
     }
 
-    fn equality(&mut self) -> Result<Box<Expr>> {
+    fn ternary(&mut self) -> Option<Box<Expr>> {
+        let expr = self.equality()?;
+        if self.match_single(&TokenKind::QuestionMark) {
+            let then_expr = self.expression()?;
+            self.consume(&TokenKind::Colon, || "Expect ':'.".into());
+            let else_expr = self.expression()?;
+            Some(Box::new(Expr::Ternary(expr, then_expr, else_expr)))
+        } else {
+            Some(expr)
+        }
+    }
+
+    fn equality(&mut self) -> Option<Box<Expr>> {
         self.binary(&Self::EQUALITY_OPERATORS, Self::comparison)
     }
 
-    fn comparison(&mut self) -> Result<Box<Expr>> {
+    fn comparison(&mut self) -> Option<Box<Expr>> {
         self.binary(&Self::COMPARISON_OPERATORS, Self::term)
     }
 
-    fn term(&mut self) -> Result<Box<Expr>> {
+    fn term(&mut self) -> Option<Box<Expr>> {
         self.binary(&Self::TERM_OPERATORS, Self::factor)
     }
 
-    fn factor(&mut self) -> Result<Box<Expr>> {
+    fn factor(&mut self) -> Option<Box<Expr>> {
         self.binary(&Self::FACTOR_OPERATORS, Self::unary)
     }
 
-    fn binary<F>(&mut self, operators: &[TokenKind], mut operand: F) -> Result<Box<Expr>>
+    fn binary<F>(&mut self, operators: &[TokenKind], mut operand: F) -> Option<Box<Expr>>
     where
-        F: FnMut(&mut Self) -> Result<Box<Expr>>,
+        F: FnMut(&mut Self) -> Option<Box<Expr>>,
     {
         let mut expr = operand(self)?;
         while self.match_any(operators) {
@@ -69,26 +88,26 @@ impl Parser {
                 operand(self)?,
             ));
         }
-        Ok(expr)
+        Some(expr)
     }
 
-    fn unary(&mut self) -> Result<Box<Expr>> {
+    fn unary(&mut self) -> Option<Box<Expr>> {
         if self.match_any(&Self::UNARY_OPERATORS) {
             let operator = self.previous().to_owned();
             let right = self.unary()?;
-            Ok(Box::new(Expr::Unary(operator, right)))
+            Some(Box::new(Expr::Unary(operator, right)))
         } else {
             self.primary()
         }
     }
 
-    fn primary(&mut self) -> Result<Box<Expr>> {
+    fn primary(&mut self) -> Option<Box<Expr>> {
         let expr = if self.match_single(&TokenKind::False) {
-            Expr::Boolean(false)
+            Expr::from(false)
         } else if self.match_single(&TokenKind::True) {
-            Expr::Boolean(true)
+            Expr::from(true)
         } else if self.match_single(&TokenKind::Nil) {
-            Expr::Nil
+            Expr::from(())
         } else if let Some(literal) = self.literal() {
             literal
         } else if self.match_single(&TokenKind::LeftParen) {
@@ -98,18 +117,18 @@ impl Parser {
             })?;
             Expr::Grouping(expr)
         } else {
-            self.peek().error("Expect expression")?
+            self.error(self.peek(), "Expect expression")?
         };
-        Ok(Box::new(expr))
+        Some(Box::new(expr))
     }
 
     fn literal(&mut self) -> Option<Expr> {
         let expr = if self.is_at_end() {
             None
         } else if let TokenKind::Number(number) = self.peek().kind {
-            Some(Expr::Number(number))
+            Some(Expr::from(number))
         } else if let TokenKind::String(string) = &self.peek().kind {
-            Some(Expr::String(string.into()))
+            Some(Expr::from(string.as_str()))
         } else {
             None
         };
@@ -138,14 +157,14 @@ impl Parser {
         }
     }
 
-    fn consume<M>(&mut self, kind: &TokenKind, message: M) -> Result<&Token>
+    fn consume<M>(&mut self, kind: &TokenKind, message: M) -> Option<&Token>
     where
         M: Fn() -> String,
     {
         if self.check(kind) {
-            Ok(self.advance())
+            Some(self.advance())
         } else {
-            self.peek().error(&message())
+            self.error(self.peek(), &message())
         }
     }
 
@@ -176,6 +195,11 @@ impl Parser {
         &self.tokens[self.current - 1]
     }
 
+    fn error<T>(&self, token: &Token, message: &str) -> Option<T> {
+        self.error_reporter.token_error(token, message);
+        None
+    }
+
     fn synchronize(&mut self) {
         self.advance();
 
@@ -188,5 +212,111 @@ impl Parser {
             }
             self.advance();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::walk_tree::{error::ErrorReporter, scanner::Scanner};
+
+    use super::*;
+
+    #[test]
+    fn parsing_literals_works() {
+        assert_eq!(test_parse_expr("2").unwrap().as_ref(), &Expr::from(2.0));
+        assert_eq!(test_parse_expr("true").unwrap().as_ref(), &Expr::from(true));
+        assert_eq!(
+            test_parse_expr("false").unwrap().as_ref(),
+            &Expr::from(false)
+        );
+        assert_eq!(test_parse_expr("nil").unwrap().as_ref(), &Expr::from(()));
+        assert_eq!(
+            test_parse_expr("\"abc\"").unwrap().as_ref(),
+            &Expr::from("abc")
+        );
+    }
+
+    #[test]
+    fn parsing_expressions_works() {
+        assert_eq!(
+            test_parse_expr("2+2").unwrap().as_ref(),
+            &Expr::Binary(
+                Box::new(Expr::from(2.0)),
+                Token::new(TokenKind::Plus, "+".into(), 1),
+                Box::new(Expr::from(2.0))
+            )
+        );
+        assert_eq!(
+            test_parse_expr("1+2*3").unwrap().as_ref(),
+            &Expr::Binary(
+                Box::new(Expr::from(1.0)),
+                Token::new(TokenKind::Plus, "+".into(), 1),
+                Box::new(Expr::Binary(
+                    Box::new(Expr::from(2.0)),
+                    Token::new(TokenKind::Star, "*".into(), 1),
+                    Box::new(Expr::from(3.0))
+                ))
+            )
+        );
+        assert_eq!(
+            test_parse_expr("(1+2)*3").unwrap().as_ref(),
+            &Expr::Binary(
+                Box::new(Expr::Grouping(Box::new(Expr::Binary(
+                    Box::new(Expr::from(1.0)),
+                    Token::new(TokenKind::Plus, "+".into(), 1),
+                    Box::new(Expr::from(2.0))
+                )))),
+                Token::new(TokenKind::Star, "*".into(), 1),
+                Box::new(Expr::from(3.0))
+            )
+        );
+        assert_eq!(
+            test_parse_expr("1 + 2 + 3").unwrap().as_ref(),
+            &Expr::Binary(
+                Box::new(Expr::Binary(
+                    Box::new(Expr::from(1.0)),
+                    Token::new(TokenKind::Plus, "+".into(), 1),
+                    Box::new(Expr::from(2.0))
+                )),
+                Token::new(TokenKind::Plus, "+".into(), 1),
+                Box::new(Expr::from(3.0)),
+            )
+        );
+    }
+
+    #[test]
+    fn parsing_comperison_works() {
+        assert_eq!(
+            test_parse_expr("2 < 3").unwrap().as_ref(),
+            &Expr::Binary(
+                Box::new(Expr::from(2.0)),
+                Token::new(TokenKind::Less, "<".into(), 1),
+                Box::new(Expr::from(3.0))
+            )
+        );
+    }
+
+    #[test]
+    fn parsing_ternary_works() {
+        assert_eq!(
+            test_parse_expr("2 < 3 ? 4 : 5").unwrap().as_ref(),
+            &Expr::Ternary(
+                Box::new(Expr::Binary(
+                    Box::new(Expr::from(2.0)),
+                    Token::new(TokenKind::Less, "<".into(), 1),
+                    Box::new(Expr::from(3.0))
+                )),
+                Box::new(Expr::from(4.0)),
+                Box::new(Expr::from(5.0))
+            )
+        );
+    }
+
+    fn test_parse_expr(source: &str) -> Option<Box<Expr>> {
+        let error_reporer = ErrorReporter::new();
+        let scanner = Scanner::new(&error_reporer);
+        let tokens: Vec<_> = scanner.scan_tokens(source).collect();
+        let mut parser = Parser::new(tokens, &error_reporer);
+        parser.parse()
     }
 }
