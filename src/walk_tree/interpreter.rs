@@ -44,7 +44,7 @@ impl<'a> Interpreter<'a> {
         match operator.kind {
             TokenKind::Minus => {
                 self.check_number_operand(operator, &right)?;
-                value::unary_operation::<f64>(|a| -a, right)
+                value::unary_operation::<f64>(|a| -a, operator, right)
             }
             TokenKind::Bang => Ok(Value::from(!right.is_truthy())),
             _ => unreachable!(),
@@ -62,13 +62,13 @@ impl<'a> Interpreter<'a> {
         match operator.kind {
             TokenKind::Minus => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_operation::<f64>(|a, b| a + b, left, right)
+                value::binary_operation::<f64>(|a, b| a + b, left, operator, right)
             }
             TokenKind::Plus => {
                 if left.is_number() && right.is_number() {
-                    value::binary_operation::<f64>(|a, b| a + b, left, right)
+                    value::binary_operation::<f64>(|a, b| a + b, left, operator, right)
                 } else if left.is_string() && right.is_string() {
-                    value::binary_operation::<String>(|a, b| a + &b, left, right)
+                    value::binary_operation::<String>(|a, b| a + &b, left, operator, right)
                 } else {
                     Err(RuntimeError::new(
                         operator.to_owned(),
@@ -78,27 +78,27 @@ impl<'a> Interpreter<'a> {
             }
             TokenKind::Slash => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_operation::<f64>(|a, b| a / b, left, right)
+                value::binary_operation::<f64>(|a, b| a / b, left, operator, right)
             }
             TokenKind::Star => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_operation::<f64>(|a, b| a * b, left, right)
+                value::binary_operation::<f64>(|a, b| a * b, left, operator, right)
             }
             TokenKind::Greater => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_relation::<f64>(|a, b| a > b, left, right)
+                value::binary_relation::<f64>(|a, b| a > b, left, operator, right)
             }
             TokenKind::GreaterEqual => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_relation::<f64>(|a, b| a >= b, left, right)
+                value::binary_relation::<f64>(|a, b| a >= b, left, operator, right)
             }
             TokenKind::Less => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_relation::<f64>(|a, b| a < b, left, right)
+                value::binary_relation::<f64>(|a, b| a < b, left, operator, right)
             }
             TokenKind::LessEqual => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_relation::<f64>(|a, b| a <= b, left, right)
+                value::binary_relation::<f64>(|a, b| a <= b, left, operator, right)
             }
             TokenKind::BangEqual => Ok(Value::from(left != right)),
             TokenKind::EqualEqual => Ok(Value::from(left == right)),

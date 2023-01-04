@@ -42,11 +42,7 @@ impl ErrorReporter {
     }
 
     pub fn runtime_error(&self, error: &RuntimeError) {
-        if let Some(token) = &error.token {
-            eprintln!("{}\n[line {}]", error.message, token.line);
-        } else {
-            eprintln!("{}", error.message);
-        }
+        eprintln!("{}\n[line {}]", error.message, error.token.line);
         self.had_runtime_error.set(true);
     }
 }
@@ -59,21 +55,14 @@ impl Default for ErrorReporter {
 
 #[derive(Debug)]
 pub struct RuntimeError {
-    pub token: Option<Token>,
+    pub token: Token,
     pub message: String,
 }
 
 impl RuntimeError {
     pub fn new(token: Token, message: &str) -> Self {
         Self {
-            token: Some(token),
-            message: String::from(message),
-        }
-    }
-
-    pub fn new_with_message(message: &str) -> Self {
-        Self {
-            token: None,
+            token,
             message: String::from(message),
         }
     }

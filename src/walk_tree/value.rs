@@ -1,8 +1,6 @@
 use std::fmt::Display;
 
-use anyhow::anyhow;
-
-use super::error::RuntimeError;
+use super::{error::RuntimeError, token::Token};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -25,13 +23,13 @@ impl From<f64> for Value {
 }
 
 impl TryFrom<Value> for f64 {
-    type Error = RuntimeError;
+    type Error = String;
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         if let Value::Number(v) = value {
             Ok(v)
         } else {
-            Err(RuntimeError::new_with_message("Expect number."))
+            Err(String::from("Expect number."))
         }
     }
 }
@@ -43,13 +41,13 @@ impl From<String> for Value {
 }
 
 impl TryFrom<Value> for String {
-    type Error = RuntimeError;
+    type Error = String;
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         if let Value::String(v) = value {
             Ok(v)
         } else {
-            Err(RuntimeError::new_with_message("Expect number."))
+            Err(String::from("Expect number."))
         }
     }
 }
@@ -91,39 +89,59 @@ impl Value {
     }
 }
 
-pub fn unary_operation<T>(op: fn(T) -> T, right: Value) -> Result<Value, RuntimeError>
+pub fn unary_operation<T>(
+    op: fn(T) -> T,
+    operator: &Token,
+    right: Value,
+) -> Result<Value, RuntimeError>
 where
-    T: TryFrom<Value, Error = RuntimeError>,
+    T: TryFrom<Value, Error = String>,
     Value: From<T>,
     <T as TryFrom<Value>>::Error: std::fmt::Debug,
 {
-    let value = Value::from(op(right.try_into()?));
+    let value = Value::from(op(right
+        .try_into()
+        .map_err(|message: String| RuntimeError::new(operator.to_owned(), &message))?));
     Ok(value)
 }
 
 pub fn binary_operation<T>(
     operation: fn(T, T) -> T,
     left: Value,
+    operator: &Token,
     right: Value,
 ) -> Result<Value, RuntimeError>
 where
-    T: TryFrom<Value, Error = RuntimeError>,
+    T: TryFrom<Value, Error = String>,
     Value: From<T>,
     <T as TryFrom<Value>>::Error: std::fmt::Debug,
 {
-    let value = Value::from(operation(left.try_into()?, right.try_into()?));
+    let value = Value::from(operation(
+        left.try_into()
+            .map_err(|message: String| RuntimeError::new(operator.to_owned(), &message))?,
+        right
+            .try_into()
+            .map_err(|message: String| RuntimeError::new(operator.to_owned(), &message))?,
+    ));
     Ok(value)
 }
 
 pub fn binary_relation<T>(
     relation: fn(T, T) -> bool,
     left: Value,
+    operator: &Token,
     right: Value,
 ) -> Result<Value, RuntimeError>
 where
-    T: TryFrom<Value, Error = RuntimeError>,
+    T: TryFrom<Value, Error = String>,
     <T as TryFrom<Value>>::Error: std::fmt::Debug,
 {
-    let value = Value::from(relation(left.try_into()?, right.try_into()?));
+    let value = Value::from(relation(
+        left.try_into()
+            .map_err(|message: String| RuntimeError::new(operator.to_owned(), &message))?,
+        right
+            .try_into()
+            .map_err(|message: String| RuntimeError::new(operator.to_owned(), &message))?,
+    ));
     Ok(value)
 }
