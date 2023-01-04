@@ -5,10 +5,11 @@ use rustyline::{error::ReadlineError, Editor};
 
 use crate::walk_tree::exit_code;
 
-use super::{error::ErrorReporter, parser::Parser, scanner::Scanner};
+use super::{error::ErrorReporter, interpreter::Interpreter, parser::Parser, scanner::Scanner};
 
 pub struct Lox<'a> {
     scanner: Scanner<'a>,
+    interpreter: Interpreter<'a>,
     error_reporter: &'a ErrorReporter,
 }
 
@@ -16,6 +17,7 @@ impl<'a> Lox<'a> {
     pub fn new(error_reporter: &'a ErrorReporter) -> Self {
         Self {
             scanner: Scanner::new(error_reporter),
+            interpreter: Interpreter::new(error_reporter),
             error_reporter,
         }
     }
@@ -62,6 +64,9 @@ impl<'a> Lox<'a> {
         let tokens: Vec<_> = self.scanner.scan_tokens(&source).collect();
         let mut parser = Parser::new(tokens, self.error_reporter);
         let expr = parser.parse();
-        println!("{:#?}", expr);
+        if self.error_reporter.had_error() {
+            return;
+        }
+        self.interpreter.interpret(&expr);
     }
 }
