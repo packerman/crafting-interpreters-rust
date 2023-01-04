@@ -60,13 +60,14 @@ impl<'a> Lox<'a> {
         Ok(ExitCode::SUCCESS)
     }
 
-    fn run(&self, source: String) {
+    fn run(&self, source: String) -> Option<()> {
         let tokens: Vec<_> = self.scanner.scan_tokens(&source).collect();
         let mut parser = Parser::new(tokens, self.error_reporter);
-        let expr = parser.parse();
+        let expr = parser.parse()?;
         if self.error_reporter.had_error() {
-            return;
+            return Some(());
         }
         self.interpreter.interpret(&expr);
+        Some(())
     }
 }
