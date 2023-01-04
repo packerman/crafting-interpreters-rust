@@ -189,6 +189,11 @@ mod tests {
         assert_evaluates_to("2 > 3 ? 2 * 3 : 2 + 3", 5.0);
     }
 
+    #[test]
+    fn cancat_stringworks() {
+        assert_evaluates_to(r#""ala" + " ma " + "kota""#, "ala ma kota");
+    }
+
     fn assert_evaluates_to<T>(source: &str, value: T)
     where
         Value: From<T>,

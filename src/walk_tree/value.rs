@@ -22,6 +22,12 @@ impl From<f64> for Value {
     }
 }
 
+impl From<&str> for Value {
+    fn from(v: &str) -> Self {
+        Self::String(String::from(v))
+    }
+}
+
 impl TryFrom<Value> for f64 {
     type Error = String;
 
