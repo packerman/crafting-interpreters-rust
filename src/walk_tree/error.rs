@@ -47,6 +47,12 @@ impl ErrorReporter {
     }
 }
 
+impl Default for ErrorReporter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug)]
 pub struct RuntimeError<'a> {
     pub token: Token,
@@ -60,7 +66,7 @@ impl<'a> RuntimeError<'a> {
 }
 
 impl Display for RuntimeError<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         todo!()
     }
 }

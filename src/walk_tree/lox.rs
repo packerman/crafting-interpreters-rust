@@ -60,7 +60,7 @@ impl<'a> Lox<'a> {
 
     fn run(&self, source: String) {
         let tokens: Vec<_> = self.scanner.scan_tokens(&source).collect();
-        let mut parser = Parser::new(tokens, &self.error_reporter);
+        let mut parser = Parser::new(tokens, self.error_reporter);
         let expr = parser.parse();
         println!("{:#?}", expr);
     }
