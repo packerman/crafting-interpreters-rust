@@ -45,7 +45,19 @@ impl<'a> Parser<'a> {
     }
 
     fn expression(&mut self) -> Option<Box<Expr>> {
-        self.equality()
+        self.ternary()
+    }
+
+    fn ternary(&mut self) -> Option<Box<Expr>> {
+        let expr = self.equality()?;
+        if self.match_single(&TokenKind::QuestionMark) {
+            let then_expr = self.expression()?;
+            self.consume(&TokenKind::Colon, || "Expect ':'.".into());
+            let else_expr = self.expression()?;
+            Some(Box::new(Expr::Ternary(expr, then_expr, else_expr)))
+        } else {
+            Some(expr)
+        }
     }
 
     fn equality(&mut self) -> Option<Box<Expr>> {
@@ -272,10 +284,38 @@ mod tests {
         );
     }
 
-    fn test_parse_expr(input: &str) -> Option<Box<Expr>> {
+    #[test]
+    fn parsing_comperison_works() {
+        assert_eq!(
+            test_parse_expr("2 < 3").unwrap().as_ref(),
+            &Expr::Binary(
+                Box::new(Expr::from(2.0)),
+                Token::new(TokenKind::Less, "<".into(), 1),
+                Box::new(Expr::from(3.0))
+            )
+        );
+    }
+
+    #[test]
+    fn parsing_ternary_works() {
+        assert_eq!(
+            test_parse_expr("2 < 3 ? 4 : 5").unwrap().as_ref(),
+            &Expr::Ternary(
+                Box::new(Expr::Binary(
+                    Box::new(Expr::from(2.0)),
+                    Token::new(TokenKind::Less, "<".into(), 1),
+                    Box::new(Expr::from(3.0))
+                )),
+                Box::new(Expr::from(4.0)),
+                Box::new(Expr::from(5.0))
+            )
+        );
+    }
+
+    fn test_parse_expr(source: &str) -> Option<Box<Expr>> {
         let error_reporer = ErrorReporter::new();
         let scanner = Scanner::new(&error_reporer);
-        let tokens: Vec<_> = scanner.scan_tokens(input).collect();
+        let tokens: Vec<_> = scanner.scan_tokens(source).collect();
         let mut parser = Parser::new(tokens, &error_reporer);
         parser.parse()
     }

@@ -22,9 +22,11 @@ pub enum TokenKind {
     Minus,
     Plus,
     Semicolon,
+    Colon,
     Slash,
     Star,
 
+    QuestionMark,
     Bang,
     BangEqual,
     Equal,

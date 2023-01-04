@@ -31,6 +31,9 @@ impl<'a> Interpreter<'a> {
             Expr::Grouping(expr) => self.interpret_expr(expr),
             Expr::Unary(operator, operand) => self.interpret_unary(operator, operand),
             Expr::Binary(left, operator, right) => self.interpret_binary(left, operator, right),
+            Expr::Ternary(condition, then_expr, else_expr) => {
+                self.interpret_ternary(condition, then_expr, else_expr)
+            }
         }
     }
 
@@ -102,6 +105,20 @@ impl<'a> Interpreter<'a> {
             TokenKind::BangEqual => Ok(Value::from(left != right)),
             TokenKind::EqualEqual => Ok(Value::from(left == right)),
             _ => unreachable!(),
+        }
+    }
+
+    fn interpret_ternary(
+        &self,
+        condition: &Expr,
+        then_expr: &Expr,
+        else_expr: &Expr,
+    ) -> Result<Value, RuntimeError> {
+        let condition = self.interpret_expr(condition)?;
+        if condition.is_truthy() {
+            self.interpret_expr(then_expr)
+        } else {
+            self.interpret_expr(else_expr)
         }
     }
 
