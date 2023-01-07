@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use crate::walk_tree::error::RuntimeError;
+use crate::walk_tree::stmt::Stmt;
 
 use super::{
     error::ErrorReporter,
@@ -10,39 +11,57 @@ use super::{
 };
 
 pub struct Interpreter<'a> {
-    error_repoter: &'a ErrorReporter,
+    error_reporter: &'a ErrorReporter,
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(error_repoter: &'a ErrorReporter) -> Self {
-        Self { error_repoter }
+    pub fn new(error_reporter: &'a ErrorReporter) -> Self {
+        Self { error_reporter }
     }
 
-    pub fn interpret(&self, expr: &Expr) {
-        let result = self.interpret_expr(expr);
-        match &result {
-            Ok(value) => println!("{}", value),
-            Err(error) => self.error_repoter.runtime_error(error),
+    pub fn interpret(&self, statements: &[Stmt]) -> Result<(), RuntimeError> {
+        for statement in statements {
+            self.execute(statement)?;
         }
+        Ok(())
     }
-    fn interpret_expr(&self, expr: &Expr) -> Result<Value, RuntimeError> {
+
+    fn evaluate(&self, expr: &Expr) -> Result<Value, RuntimeError> {
         match expr {
-            Expr::Literal(literal) => self.interpret_literal(literal),
-            Expr::Grouping(expr) => self.interpret_expr(expr),
-            Expr::Unary(operator, operand) => self.interpret_unary(operator, operand),
-            Expr::Binary(left, operator, right) => self.interpret_binary(left, operator, right),
+            Expr::Literal(literal) => self.evaluate_literal(literal),
+            Expr::Grouping(expr) => self.evaluate(expr),
+            Expr::Unary(operator, operand) => self.evaluate_unary(operator, operand),
+            Expr::Binary(left, operator, right) => self.evaluate_binary(left, operator, right),
             Expr::Ternary(condition, then_expr, else_expr) => {
-                self.interpret_ternary(condition, then_expr, else_expr)
+                self.evaluate_ternary(condition, then_expr, else_expr)
             }
         }
     }
 
-    fn interpret_literal(&self, literal: &Value) -> Result<Value, RuntimeError> {
+    fn execute(&self, stmt: &Stmt) -> Result<(), RuntimeError> {
+        match stmt {
+            Stmt::Expr(expr) => self.execute_expression_stmt(expr),
+            Stmt::Print(expr) => self.execute_print_stmt(expr),
+        }
+    }
+
+    fn execute_expression_stmt(&self, expr: &Expr) -> Result<(), RuntimeError> {
+        self.evaluate(expr)?;
+        Ok(())
+    }
+
+    fn execute_print_stmt(&self, expr: &Expr) -> Result<(), RuntimeError> {
+        let value = self.evaluate(expr)?;
+        println!("{}", value);
+        Ok(())
+    }
+
+    fn evaluate_literal(&self, literal: &Value) -> Result<Value, RuntimeError> {
         Ok(literal.to_owned())
     }
 
-    fn interpret_unary(&self, operator: &Token, right: &Expr) -> Result<Value, RuntimeError> {
-        let right = self.interpret_expr(right)?;
+    fn evaluate_unary(&self, operator: &Token, right: &Expr) -> Result<Value, RuntimeError> {
+        let right = self.evaluate(right)?;
         match operator.kind {
             TokenKind::Minus => {
                 self.check_number_operand(operator, &right)?;
@@ -53,14 +72,14 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn interpret_binary(
+    fn evaluate_binary(
         &self,
         left: &Expr,
         operator: &Token,
         right: &Expr,
     ) -> Result<Value, RuntimeError> {
-        let left = self.interpret_expr(left)?;
-        let right = self.interpret_expr(right)?;
+        let left = self.evaluate(left)?;
+        let right = self.evaluate(right)?;
         match operator.kind {
             TokenKind::Minus => {
                 self.check_number_operands(operator, &left, &right)?;
@@ -108,17 +127,17 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn interpret_ternary(
+    fn evaluate_ternary(
         &self,
         condition: &Expr,
         then_expr: &Expr,
         else_expr: &Expr,
     ) -> Result<Value, RuntimeError> {
-        let condition = self.interpret_expr(condition)?;
+        let condition = self.evaluate(condition)?;
         if condition.is_truthy() {
-            self.interpret_expr(then_expr)
+            self.evaluate(then_expr)
         } else {
-            self.interpret_expr(else_expr)
+            self.evaluate(else_expr)
         }
     }
 
@@ -158,50 +177,47 @@ mod tests {
 
     #[test]
     fn arithmetic() {
-        assert_evaluates_to("2", 2.0);
-        assert_evaluates_to("2+3", 5.0);
-        assert_evaluates_to("2*3", 6.0);
-        assert_evaluates_to("1+2*3", 7.0);
-        assert_evaluates_to("(1+2)*3", 9.0);
-        assert_evaluates_to("1*2+3", 5.0);
-        assert_evaluates_to("1+2+3", 6.0);
+        assert_evaluates_to("2;", 2.0);
+        assert_evaluates_to("2+3;", 5.0);
+        assert_evaluates_to("2*3;", 6.0);
+        assert_evaluates_to("1+2*3;", 7.0);
+        assert_evaluates_to("(1+2)*3;", 9.0);
+        assert_evaluates_to("1*2+3;", 5.0);
+        assert_evaluates_to("1+2+3;", 6.0);
     }
 
     #[test]
     fn comparison_works() {
-        assert_evaluates_to("2 == 2", true);
-        assert_evaluates_to("2 != 2", false);
-        assert_evaluates_to("2 < 2", false);
-        assert_evaluates_to("2 <= 2", true);
-        assert_evaluates_to("2 > 2", false);
-        assert_evaluates_to("2 >= 2", true);
-        assert_evaluates_to("2 == 3", false);
-        assert_evaluates_to("2 != 3", true);
-        assert_evaluates_to("2 < 3", true);
-        assert_evaluates_to("2 <= 3", true);
-        assert_evaluates_to("2 > 3", false);
-        assert_evaluates_to("2 >= 3", false);
+        assert_evaluates_to("2 == 2;", true);
+        assert_evaluates_to("2 != 2;", false);
+        assert_evaluates_to("2 < 2;", false);
+        assert_evaluates_to("2 <= 2;", true);
+        assert_evaluates_to("2 > 2;", false);
+        assert_evaluates_to("2 >= 2;", true);
+        assert_evaluates_to("2 == 3;", false);
+        assert_evaluates_to("2 != 3;", true);
+        assert_evaluates_to("2 < 3;", true);
+        assert_evaluates_to("2 <= 3;", true);
+        assert_evaluates_to("2 > 3;", false);
+        assert_evaluates_to("2 >= 3;", false);
     }
 
     #[test]
     fn ternary_works() {
-        assert_evaluates_to("2 < 3 ? 2 * 3 : 2 + 3", 6.0);
-        assert_evaluates_to("2 > 3 ? 2 * 3 : 2 + 3", 5.0);
+        assert_evaluates_to("2 < 3 ? 2 * 3 : 2 + 3;", 6.0);
+        assert_evaluates_to("2 > 3 ? 2 * 3 : 2 + 3;", 5.0);
     }
 
     #[test]
-    fn cancat_stringworks() {
-        assert_evaluates_to(r#""ala" + " ma " + "kota""#, "ala ma kota");
+    fn concat_string_works() {
+        assert_evaluates_to(r#""ala" + " ma " + "kota";"#, "ala ma kota");
     }
 
     fn assert_evaluates_to<T>(source: &str, value: T)
     where
         Value: From<T>,
     {
-        assert_eq!(
-            self::test_interpret_expr(source).unwrap(),
-            Value::from(value)
-        )
+        assert_eq!(test_interpret_expr(source).unwrap(), Value::from(value))
     }
 
     fn test_interpret_expr(source: &str) -> Option<Value> {
@@ -210,7 +226,8 @@ mod tests {
         let tokens: Vec<_> = scanner.scan_tokens(source).collect();
         let mut parser = Parser::new(tokens, &error_reporter);
         let tree = parser.parse()?;
+        let expr = tree[0].as_expr().unwrap();
         let interpreter = Interpreter::new(&error_reporter);
-        interpreter.interpret_expr(&tree).ok()
+        interpreter.evaluate(expr).ok()
     }
 }

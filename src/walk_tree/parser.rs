@@ -3,6 +3,7 @@ use super::{
     expr::Expr,
     token::{Token, TokenKind},
 };
+use crate::walk_tree::stmt::Stmt;
 
 pub struct Parser<'a> {
     tokens: Vec<Token>,
@@ -40,12 +41,38 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> Option<Box<Expr>> {
-        self.expression()
+    pub fn parse(&mut self) -> Option<Vec<Stmt>> {
+        let mut statements = Vec::new();
+        while !self.is_at_end() {
+            statements.push(self.statement()?)
+        }
+        Some(statements)
     }
 
     fn expression(&mut self) -> Option<Box<Expr>> {
         self.ternary()
+    }
+
+    fn statement(&mut self) -> Option<Stmt> {
+        if self.match_single(&TokenKind::Print) {
+            self.print_statement()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    fn print_statement(&mut self) -> Option<Stmt> {
+        let value = self.expression()?;
+        self.consume(&TokenKind::Semicolon, || "Expect ';' after value.".into())?;
+        Some(Stmt::Print(value))
+    }
+
+    fn expression_statement(&mut self) -> Option<Stmt> {
+        let expr = self.expression()?;
+        self.consume(&TokenKind::Semicolon, || {
+            "Expect ';' after expression.".into()
+        })?;
+        Some(Stmt::Expr(expr))
     }
 
     fn ternary(&mut self) -> Option<Box<Expr>> {
@@ -317,6 +344,6 @@ mod tests {
         let scanner = Scanner::new(&error_reporer);
         let tokens: Vec<_> = scanner.scan_tokens(source).collect();
         let mut parser = Parser::new(tokens, &error_reporer);
-        parser.parse()
+        parser.expression()
     }
 }

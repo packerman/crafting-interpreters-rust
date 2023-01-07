@@ -1,6 +1,6 @@
 use std::{fs, process::ExitCode};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use rustyline::{error::ReadlineError, Editor};
 
 use crate::walk_tree::exit_code;
@@ -62,14 +62,15 @@ impl<'a> Lox<'a> {
         Ok(ExitCode::SUCCESS)
     }
 
-    fn run(&self, source: String) -> Option<()> {
+    fn run(&self, source: String) -> Result<()> {
         let tokens: Vec<_> = self.scanner.scan_tokens(&source).collect();
         let mut parser = Parser::new(tokens, self.error_reporter);
-        let expr = parser.parse()?;
+        let statements = parser.parse().context("Failed to parse")?;
         if self.error_reporter.had_error() {
-            return Some(());
+            return Ok(());
         }
-        self.interpreter.interpret(&expr);
-        Some(())
+        self.interpreter
+            .interpret(&statements)
+            .context("Failed to run")
     }
 }
