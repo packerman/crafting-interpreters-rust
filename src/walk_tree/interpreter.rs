@@ -1,4 +1,6 @@
 use anyhow::Result;
+use std::io::Write;
+use std::io::{self, Stdout};
 
 use crate::walk_tree::error::RuntimeError;
 use crate::walk_tree::stmt::Stmt;
@@ -10,20 +12,35 @@ use super::{
     value::{self, Value},
 };
 
-pub struct Interpreter<'a> {
+pub struct Interpreter<'a, W> {
     error_reporter: &'a ErrorReporter,
+    output: W,
 }
 
-impl<'a> Interpreter<'a> {
+impl<'a> Interpreter<'a, Stdout> {
     pub fn new(error_reporter: &'a ErrorReporter) -> Self {
-        Self { error_reporter }
+        Self::new_with_output(error_reporter, io::stdout())
+    }
+}
+
+impl<'a, W> Interpreter<'a, W>
+where
+    W: Write,
+{
+    pub fn new_with_output(error_reporter: &'a ErrorReporter, output: W) -> Self {
+        Self {
+            error_reporter,
+            output,
+        }
     }
 
-    pub fn interpret(&self, statements: &[Stmt]) -> Result<(), RuntimeError> {
+    pub fn interpret(&mut self, statements: &[Stmt]) {
         for statement in statements {
-            self.execute(statement)?;
+            if let Err(error) = self.execute(statement) {
+                self.error_reporter.runtime_error(&error);
+                return;
+            }
         }
-        Ok(())
     }
 
     fn evaluate(&self, expr: &Expr) -> Result<Value, RuntimeError> {
@@ -38,7 +55,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn execute(&self, stmt: &Stmt) -> Result<(), RuntimeError> {
+    fn execute(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
         match stmt {
             Stmt::Expr(expr) => self.execute_expression_stmt(expr),
             Stmt::Print(expr) => self.execute_print_stmt(expr),
@@ -50,10 +67,10 @@ impl<'a> Interpreter<'a> {
         Ok(())
     }
 
-    fn execute_print_stmt(&self, expr: &Expr) -> Result<(), RuntimeError> {
+    fn execute_print_stmt(&mut self, expr: &Expr) -> Result<(), RuntimeError> {
         let value = self.evaluate(expr)?;
-        println!("{}", value);
-        Ok(())
+        writeln!(self.output, "{}", value)
+            .map_err(|err| RuntimeError::from(format!("Print error: {}", err)))
     }
 
     fn evaluate_literal(&self, literal: &Value) -> Result<Value, RuntimeError> {
@@ -172,6 +189,7 @@ impl<'a> Interpreter<'a> {
 #[cfg(test)]
 mod tests {
     use crate::walk_tree::{parser::Parser, scanner::Scanner};
+    use anyhow::Context;
 
     use super::*;
 
@@ -213,21 +231,46 @@ mod tests {
         assert_evaluates_to(r#""ala" + " ma " + "kota";"#, "ala ma kota");
     }
 
+    #[test]
+    fn print_works() {
+        assert_prints(r#"print 2+3;"#, b"5\n");
+    }
+
     fn assert_evaluates_to<T>(source: &str, value: T)
     where
         Value: From<T>,
     {
-        assert_eq!(test_interpret_expr(source).unwrap(), Value::from(value))
+        assert_eq!(
+            test_interpret_stmt_expr(source).unwrap(),
+            Value::from(value)
+        )
     }
 
-    fn test_interpret_expr(source: &str) -> Option<Value> {
+    fn assert_prints(source: &str, value: &[u8]) {
+        assert_eq!(test_interpreter_output(source).unwrap(), value)
+    }
+
+    fn test_interpreter_output(source: &str) -> Result<Vec<u8>> {
         let error_reporter = ErrorReporter::new();
+        let tree = test_parse(source, &error_reporter).context("Error in parsing")?;
+        let mut output = Vec::new();
+        let mut interpreter = Interpreter::new_with_output(&error_reporter, &mut output);
+        interpreter.interpret(&tree);
+        Ok(output)
+    }
+
+    fn test_interpret_stmt_expr(source: &str) -> Result<Value> {
+        let error_reporter = ErrorReporter::new();
+        let tree = test_parse(source, &error_reporter).context("Parse error")?;
+        let expr = tree[0].as_expr().unwrap();
+        let interpreter = Interpreter::new(&error_reporter);
+        interpreter.evaluate(expr).context("Evaluating error")
+    }
+
+    fn test_parse(source: &str, error_reporter: &ErrorReporter) -> Option<Vec<Stmt>> {
         let scanner = Scanner::new(&error_reporter);
         let tokens: Vec<_> = scanner.scan_tokens(source).collect();
         let mut parser = Parser::new(tokens, &error_reporter);
-        let tree = parser.parse()?;
-        let expr = tree[0].as_expr().unwrap();
-        let interpreter = Interpreter::new(&error_reporter);
-        interpreter.evaluate(expr).ok()
+        parser.parse()
     }
 }
