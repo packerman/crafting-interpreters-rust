@@ -62,7 +62,7 @@ impl<'a> Lox<'a> {
         Ok(ExitCode::SUCCESS)
     }
 
-    fn run(&mut self, source: String) -> () {
+    fn run(&mut self, source: String) {
         let tokens: Vec<_> = self.scanner.scan_tokens(&source).collect();
         let mut parser = Parser::new(tokens, self.error_reporter);
         let statements = parser.parse().unwrap_or_default();

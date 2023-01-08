@@ -268,9 +268,9 @@ mod tests {
     }
 
     fn test_parse(source: &str, error_reporter: &ErrorReporter) -> Option<Vec<Stmt>> {
-        let scanner = Scanner::new(&error_reporter);
+        let scanner = Scanner::new(error_reporter);
         let tokens: Vec<_> = scanner.scan_tokens(source).collect();
-        let mut parser = Parser::new(tokens, &error_reporter);
+        let mut parser = Parser::new(tokens, error_reporter);
         parser.parse()
     }
 }
