@@ -5,6 +5,7 @@ use std::io::{self, Stdout};
 use crate::walk_tree::error::RuntimeError;
 use crate::walk_tree::stmt::Stmt;
 
+use super::environment::Environment;
 use super::{
     error::ErrorReporter,
     expr::Expr,
@@ -15,6 +16,7 @@ use super::{
 pub struct Interpreter<'a, W> {
     error_reporter: &'a ErrorReporter,
     output: W,
+    environment: Environment,
 }
 
 impl<'a> Interpreter<'a, Stdout> {
@@ -31,6 +33,7 @@ where
         Self {
             error_reporter,
             output,
+            environment: Environment::new(),
         }
     }
 
@@ -52,6 +55,7 @@ where
             Expr::Ternary(condition, then_expr, else_expr) => {
                 self.evaluate_ternary(condition, then_expr, else_expr)
             }
+            Expr::Variable(name) => self.environment.get(name),
         }
     }
 
@@ -59,6 +63,9 @@ where
         match stmt {
             Stmt::Expr(expr) => self.execute_expression_stmt(expr),
             Stmt::Print(expr) => self.execute_print_stmt(expr),
+            Stmt::VarDeclaration(name, initializer) => {
+                self.execute_var_stmt(name, initializer.as_deref())
+            }
         }
     }
 
@@ -71,6 +78,20 @@ where
         let value = self.evaluate(expr)?;
         writeln!(self.output, "{}", value)
             .map_err(|err| RuntimeError::from(format!("Print error: {}", err)))
+    }
+
+    fn execute_var_stmt(
+        &mut self,
+        name: &Token,
+        initializer: Option<&Expr>,
+    ) -> Result<(), RuntimeError> {
+        let value = if let Some(initializer) = initializer {
+            Some(self.evaluate(initializer)?)
+        } else {
+            None
+        };
+        self.environment.define(name.lexeme.to_owned(), value);
+        Ok(())
     }
 
     fn evaluate_literal(&self, literal: &Value) -> Result<Value, RuntimeError> {

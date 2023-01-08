@@ -3,28 +3,36 @@ use std::fmt::Display;
 use super::{error::RuntimeError, token::Token};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Value {
+pub struct Value(Option<TypedValue>);
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedValue {
     Boolean(bool),
-    Nil,
     Number(f64),
     String(String),
 }
 
+impl From<TypedValue> for Value {
+    fn from(value: TypedValue) -> Self {
+        Self(Some(value))
+    }
+}
+
 impl From<bool> for Value {
     fn from(v: bool) -> Self {
-        Self::Boolean(v)
+        Self::from(TypedValue::Boolean(v))
     }
 }
 
 impl From<f64> for Value {
     fn from(v: f64) -> Self {
-        Self::Number(v)
+        Self::from(TypedValue::Number(v))
     }
 }
 
 impl From<&str> for Value {
     fn from(v: &str) -> Self {
-        Self::String(String::from(v))
+        Self::from(TypedValue::String(String::from(v)))
     }
 }
 
@@ -32,7 +40,7 @@ impl TryFrom<Value> for f64 {
     type Error = String;
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
-        if let Value::Number(v) = value {
+        if let Some(TypedValue::Number(v)) = value.0 {
             Ok(v)
         } else {
             Err(String::from("Expect number."))
@@ -42,7 +50,7 @@ impl TryFrom<Value> for f64 {
 
 impl From<String> for Value {
     fn from(v: String) -> Self {
-        Self::String(v)
+        Self::from(TypedValue::String(v))
     }
 }
 
@@ -50,7 +58,7 @@ impl TryFrom<Value> for String {
     type Error = String;
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
-        if let Value::String(v) = value {
+        if let Some(TypedValue::String(v)) = value.0 {
             Ok(v)
         } else {
             Err(String::from("Expect number."))
@@ -60,18 +68,18 @@ impl TryFrom<Value> for String {
 
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Value::Boolean(value) => write!(f, "{}", value),
-            Value::Nil => write!(f, "nil"),
-            Value::Number(value) => write!(f, "{}", value),
-            Value::String(value) => write!(f, "{}", value),
+        match self.0 {
+            Some(TypedValue::Boolean(value)) => write!(f, "{}", value),
+            None => write!(f, "nil"),
+            Some(TypedValue::Number(value)) => write!(f, "{}", value),
+            Some(TypedValue::String(value)) => write!(f, "{}", value),
         }
     }
 }
 
 impl Value {
     pub fn try_into_number(self) -> Result<f64, Self> {
-        if let Self::Number(v) = self {
+        if let Some(TypedValue::Number(v)) = self.0 {
             Ok(v)
         } else {
             Err(self)
@@ -79,19 +87,19 @@ impl Value {
     }
 
     pub fn is_truthy(&self) -> bool {
-        match self {
-            Self::Nil => false,
-            Self::Boolean(value) => value.to_owned(),
+        match self.0 {
+            None => false,
+            Some(TypedValue::Boolean(value)) => value.to_owned(),
             _ => true,
         }
     }
 
     pub fn is_number(&self) -> bool {
-        matches!(self, Self::Number(..))
+        matches!(self.0, Some(TypedValue::Number(..)))
     }
 
     pub fn is_string(&self) -> bool {
-        matches!(self, Self::String(..))
+        matches!(self.0, Some(TypedValue::String(..)))
     }
 }
 

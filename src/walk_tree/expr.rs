@@ -9,6 +9,7 @@ pub enum Expr {
     Literal(Value),
     Grouping(Box<Expr>),
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
+    Variable(Token),
 }
 
 impl From<bool> for Expr {

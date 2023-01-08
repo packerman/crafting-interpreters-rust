@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use super::{
     error::ErrorReporter,
     expr::Expr,
@@ -44,13 +46,29 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> Option<Vec<Stmt>> {
         let mut statements = Vec::new();
         while !self.is_at_end() {
-            statements.push(self.statement()?)
+            statements.push(self.declaration()?)
         }
         Some(statements)
     }
 
     fn expression(&mut self) -> Option<Box<Expr>> {
         self.ternary()
+    }
+
+    fn declaration(&mut self) -> Option<Stmt> {
+        let result = self.try_declaration();
+        if matches!(result, None) {
+            self.synchronize();
+        }
+        result
+    }
+
+    fn try_declaration(&mut self) -> Option<Stmt> {
+        if self.match_single(&TokenKind::Var) {
+            self.var_declaration()
+        } else {
+            self.statement()
+        }
     }
 
     fn statement(&mut self) -> Option<Stmt> {
@@ -65,6 +83,21 @@ impl<'a> Parser<'a> {
         let value = self.expression()?;
         self.consume(&TokenKind::Semicolon, || "Expect ';' after value.".into())?;
         Some(Stmt::Print(value))
+    }
+
+    fn var_declaration(&mut self) -> Option<Stmt> {
+        let name = self
+            .consume(&TokenKind::Identifier, || format!("Expect variable name."))?
+            .to_owned();
+        let initializer = if self.match_single(&TokenKind::Equal) {
+            self.expression()
+        } else {
+            None
+        };
+        self.consume(&TokenKind::Semicolon, || {
+            format!("Expect ';' after variable declaration.")
+        })?;
+        Some(Stmt::VarDeclaration(name, initializer))
     }
 
     fn expression_statement(&mut self) -> Option<Stmt> {
@@ -137,6 +170,8 @@ impl<'a> Parser<'a> {
             Expr::from(())
         } else if let Some(literal) = self.literal() {
             literal
+        } else if self.match_single(&TokenKind::Identifier) {
+            Expr::Variable(self.previous().to_owned())
         } else if self.match_single(&TokenKind::LeftParen) {
             let expr = self.expression()?;
             self.consume(&TokenKind::RightParen, || {
