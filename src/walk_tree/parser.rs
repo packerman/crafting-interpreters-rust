@@ -1,5 +1,3 @@
-use std::fmt::format;
-
 use super::{
     error::ErrorReporter,
     expr::Expr,

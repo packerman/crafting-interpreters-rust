@@ -3,44 +3,50 @@ use std::fmt::Display;
 use super::{error::RuntimeError, token::Token};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Value(Option<TypedValue>);
+pub struct Cell(Option<Value>);
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypedValue {
+pub enum Value {
     Boolean(bool),
     Number(f64),
     String(String),
 }
 
-impl From<TypedValue> for Value {
-    fn from(value: TypedValue) -> Self {
+impl From<Value> for Cell {
+    fn from(value: Value) -> Self {
         Self(Some(value))
     }
 }
 
-impl From<bool> for Value {
+impl From<bool> for Cell {
     fn from(v: bool) -> Self {
-        Self::from(TypedValue::Boolean(v))
+        Self::from(Value::Boolean(v))
     }
 }
 
-impl From<f64> for Value {
+impl From<f64> for Cell {
     fn from(v: f64) -> Self {
-        Self::from(TypedValue::Number(v))
+        Self::from(Value::Number(v))
     }
 }
 
-impl From<&str> for Value {
+impl From<&str> for Cell {
     fn from(v: &str) -> Self {
-        Self::from(TypedValue::String(String::from(v)))
+        Self::from(Value::String(String::from(v)))
     }
 }
 
-impl TryFrom<Value> for f64 {
+impl From<()> for Cell {
+    fn from(_value: ()) -> Self {
+        Self(None)
+    }
+}
+
+impl TryFrom<Cell> for f64 {
     type Error = String;
 
-    fn try_from(value: Value) -> Result<Self, Self::Error> {
-        if let Some(TypedValue::Number(v)) = value.0 {
+    fn try_from(value: Cell) -> Result<Self, Self::Error> {
+        if let Some(Value::Number(v)) = value.0 {
             Ok(v)
         } else {
             Err(String::from("Expect number."))
@@ -48,17 +54,17 @@ impl TryFrom<Value> for f64 {
     }
 }
 
-impl From<String> for Value {
+impl From<String> for Cell {
     fn from(v: String) -> Self {
-        Self::from(TypedValue::String(v))
+        Self::from(Value::String(v))
     }
 }
 
-impl TryFrom<Value> for String {
+impl TryFrom<Cell> for String {
     type Error = String;
 
-    fn try_from(value: Value) -> Result<Self, Self::Error> {
-        if let Some(TypedValue::String(v)) = value.0 {
+    fn try_from(value: Cell) -> Result<Self, Self::Error> {
+        if let Some(Value::String(v)) = value.0 {
             Ok(v)
         } else {
             Err(String::from("Expect number."))
@@ -66,71 +72,63 @@ impl TryFrom<Value> for String {
     }
 }
 
-impl Display for Value {
+impl Display for Cell {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0 {
-            Some(TypedValue::Boolean(value)) => write!(f, "{}", value),
+        match self.0.as_ref() {
+            Some(Value::Boolean(value)) => write!(f, "{}", value),
             None => write!(f, "nil"),
-            Some(TypedValue::Number(value)) => write!(f, "{}", value),
-            Some(TypedValue::String(value)) => write!(f, "{}", value),
+            Some(Value::Number(value)) => write!(f, "{}", value),
+            Some(Value::String(value)) => write!(f, "{}", value),
         }
     }
 }
 
-impl Value {
-    pub fn try_into_number(self) -> Result<f64, Self> {
-        if let Some(TypedValue::Number(v)) = self.0 {
-            Ok(v)
-        } else {
-            Err(self)
-        }
-    }
-
+impl Cell {
     pub fn is_truthy(&self) -> bool {
-        match self.0 {
+        match self.0.as_ref() {
             None => false,
-            Some(TypedValue::Boolean(value)) => value.to_owned(),
+            Some(Value::Boolean(value)) => value.to_owned(),
             _ => true,
         }
     }
 
     pub fn is_number(&self) -> bool {
-        matches!(self.0, Some(TypedValue::Number(..)))
+        matches!(self.0.as_ref(), Some(Value::Number(..)))
     }
 
     pub fn is_string(&self) -> bool {
-        matches!(self.0, Some(TypedValue::String(..)))
+        matches!(self.0.as_ref(), Some(Value::String(..)))
     }
 }
 
-pub fn unary_operation<T>(
-    op: fn(T) -> T,
+pub fn unary_operation<T, R>(
+    op: fn(T) -> R,
     operator: &Token,
-    right: Value,
-) -> Result<Value, RuntimeError>
+    right: Cell,
+) -> Result<Cell, RuntimeError>
 where
-    T: TryFrom<Value, Error = String>,
-    Value: From<T>,
-    <T as TryFrom<Value>>::Error: std::fmt::Debug,
+    T: TryFrom<Cell, Error = String>,
+    Cell: From<R>,
+    <T as TryFrom<Cell>>::Error: std::fmt::Debug,
 {
-    let value = Value::from(op(right
+    let value = Cell::from(op(right
         .try_into()
         .map_err(|message: String| RuntimeError::new(operator.to_owned(), &message))?));
     Ok(value)
 }
 
-pub fn binary_operation<T>(
-    operation: fn(T, T) -> T,
-    left: Value,
+pub fn binary_operation<T, R>(
+    operation: fn(T, T) -> R,
+    left: Cell,
     operator: &Token,
-    right: Value,
-) -> Result<Value, RuntimeError>
+    right: Cell,
+) -> Result<Cell, RuntimeError>
 where
-    T: TryFrom<Value, Error = String>,
-    Value: From<T>,
-    <T as TryFrom<Value>>::Error: std::fmt::Debug,
+    T: TryFrom<Cell, Error = String>,
+    Cell: From<R>,
+    <T as TryFrom<Cell>>::Error: std::fmt::Debug,
 {
-    let value = Value::from(operation(
+    let value = Cell::from(operation(
         left.try_into()
             .map_err(|message: String| RuntimeError::new(operator.to_owned(), &message))?,
         right
@@ -142,15 +140,15 @@ where
 
 pub fn binary_relation<T>(
     relation: fn(T, T) -> bool,
-    left: Value,
+    left: Cell,
     operator: &Token,
-    right: Value,
-) -> Result<Value, RuntimeError>
+    right: Cell,
+) -> Result<Cell, RuntimeError>
 where
-    T: TryFrom<Value, Error = String>,
-    <T as TryFrom<Value>>::Error: std::fmt::Debug,
+    T: TryFrom<Cell, Error = String>,
+    <T as TryFrom<Cell>>::Error: std::fmt::Debug,
 {
-    let value = Value::from(relation(
+    let value = Cell::from(relation(
         left.try_into()
             .map_err(|message: String| RuntimeError::new(operator.to_owned(), &message))?,
         right

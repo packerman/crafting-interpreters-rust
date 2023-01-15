@@ -1,4 +1,4 @@
-use super::{token::Token, value::Value};
+use super::{token::Token, value::Cell};
 
 pub type Operator = Token;
 
@@ -6,7 +6,7 @@ pub type Operator = Token;
 pub enum Expr {
     Binary(Box<Expr>, Operator, Box<Expr>),
     Unary(Operator, Box<Expr>),
-    Literal(Value),
+    Literal(Cell),
     Grouping(Box<Expr>),
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
     Variable(Token),
@@ -14,30 +14,30 @@ pub enum Expr {
 
 impl From<bool> for Expr {
     fn from(value: bool) -> Self {
-        Self::Literal(Value::Boolean(value))
+        Self::Literal(Cell::from(value))
     }
 }
 
 impl From<f64> for Expr {
     fn from(value: f64) -> Self {
-        Self::Literal(Value::Number(value))
+        Self::Literal(Cell::from(value))
     }
 }
 
 impl From<()> for Expr {
     fn from(_value: ()) -> Self {
-        Self::Literal(Value::Nil)
+        Self::Literal(Cell::from(()))
     }
 }
 
 impl From<String> for Expr {
     fn from(value: String) -> Self {
-        Self::Literal(Value::String(value))
+        Self::Literal(Cell::from(value))
     }
 }
 
 impl From<&str> for Expr {
     fn from(value: &str) -> Self {
-        Self::Literal(Value::String(String::from(value)))
+        Self::Literal(Cell::from(String::from(value)))
     }
 }

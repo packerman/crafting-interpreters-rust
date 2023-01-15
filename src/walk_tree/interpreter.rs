@@ -10,7 +10,7 @@ use super::{
     error::ErrorReporter,
     expr::Expr,
     token::{Token, TokenKind},
-    value::{self, Value},
+    value::{self, Cell},
 };
 
 pub struct Interpreter<'a, W> {
@@ -46,7 +46,7 @@ where
         }
     }
 
-    fn evaluate(&self, expr: &Expr) -> Result<Value, RuntimeError> {
+    fn evaluate(&self, expr: &Expr) -> Result<Cell, RuntimeError> {
         match expr {
             Expr::Literal(literal) => self.evaluate_literal(literal),
             Expr::Grouping(expr) => self.evaluate(expr),
@@ -55,7 +55,7 @@ where
             Expr::Ternary(condition, then_expr, else_expr) => {
                 self.evaluate_ternary(condition, then_expr, else_expr)
             }
-            Expr::Variable(name) => self.environment.get(name),
+            Expr::Variable(name) => self.environment.get(name).map(|value| value.to_owned()),
         }
     }
 
@@ -86,26 +86,26 @@ where
         initializer: Option<&Expr>,
     ) -> Result<(), RuntimeError> {
         let value = if let Some(initializer) = initializer {
-            Some(self.evaluate(initializer)?)
+            self.evaluate(initializer)?
         } else {
-            None
+            Cell::from(())
         };
         self.environment.define(name.lexeme.to_owned(), value);
         Ok(())
     }
 
-    fn evaluate_literal(&self, literal: &Value) -> Result<Value, RuntimeError> {
+    fn evaluate_literal(&self, literal: &Cell) -> Result<Cell, RuntimeError> {
         Ok(literal.to_owned())
     }
 
-    fn evaluate_unary(&self, operator: &Token, right: &Expr) -> Result<Value, RuntimeError> {
+    fn evaluate_unary(&self, operator: &Token, right: &Expr) -> Result<Cell, RuntimeError> {
         let right = self.evaluate(right)?;
         match operator.kind {
             TokenKind::Minus => {
                 self.check_number_operand(operator, &right)?;
-                value::unary_operation::<f64>(|a| -a, operator, right)
+                value::unary_operation(|a: f64| -a, operator, right)
             }
-            TokenKind::Bang => Ok(Value::from(!right.is_truthy())),
+            TokenKind::Bang => Ok(Cell::from(!right.is_truthy())),
             _ => unreachable!(),
         }
     }
@@ -115,19 +115,19 @@ where
         left: &Expr,
         operator: &Token,
         right: &Expr,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Cell, RuntimeError> {
         let left = self.evaluate(left)?;
         let right = self.evaluate(right)?;
         match operator.kind {
             TokenKind::Minus => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_operation::<f64>(|a, b| a + b, left, operator, right)
+                value::binary_operation(|a: f64, b| a + b, left, operator, right)
             }
             TokenKind::Plus => {
                 if left.is_number() && right.is_number() {
-                    value::binary_operation::<f64>(|a, b| a + b, left, operator, right)
+                    value::binary_operation(|a: f64, b| a + b, left, operator, right)
                 } else if left.is_string() && right.is_string() {
-                    value::binary_operation::<String>(|a, b| a + &b, left, operator, right)
+                    value::binary_operation(|a: String, b| a + &b, left, operator, right)
                 } else {
                     Err(RuntimeError::new(
                         operator.to_owned(),
@@ -137,30 +137,30 @@ where
             }
             TokenKind::Slash => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_operation::<f64>(|a, b| a / b, left, operator, right)
+                value::binary_operation(|a: f64, b| a / b, left, operator, right)
             }
             TokenKind::Star => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_operation::<f64>(|a, b| a * b, left, operator, right)
+                value::binary_operation(|a: f64, b| a * b, left, operator, right)
             }
             TokenKind::Greater => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_relation::<f64>(|a, b| a > b, left, operator, right)
+                value::binary_operation(|a: f64, b| a > b, left, operator, right)
             }
             TokenKind::GreaterEqual => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_relation::<f64>(|a, b| a >= b, left, operator, right)
+                value::binary_operation(|a: f64, b| a >= b, left, operator, right)
             }
             TokenKind::Less => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_relation::<f64>(|a, b| a < b, left, operator, right)
+                value::binary_operation(|a: f64, b| a < b, left, operator, right)
             }
             TokenKind::LessEqual => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_relation::<f64>(|a, b| a <= b, left, operator, right)
+                value::binary_operation(|a: f64, b| a <= b, left, operator, right)
             }
-            TokenKind::BangEqual => Ok(Value::from(left != right)),
-            TokenKind::EqualEqual => Ok(Value::from(left == right)),
+            TokenKind::BangEqual => Ok(Cell::from(left != right)),
+            TokenKind::EqualEqual => Ok(Cell::from(left == right)),
             _ => unreachable!(),
         }
     }
@@ -170,7 +170,7 @@ where
         condition: &Expr,
         then_expr: &Expr,
         else_expr: &Expr,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Cell, RuntimeError> {
         let condition = self.evaluate(condition)?;
         if condition.is_truthy() {
             self.evaluate(then_expr)
@@ -179,7 +179,7 @@ where
         }
     }
 
-    fn check_number_operand(&self, operator: &Token, operand: &Value) -> Result<(), RuntimeError> {
+    fn check_number_operand(&self, operator: &Token, operand: &Cell) -> Result<(), RuntimeError> {
         if operand.is_number() {
             Ok(())
         } else {
@@ -193,8 +193,8 @@ where
     fn check_number_operands(
         &self,
         operator: &Token,
-        left: &Value,
-        right: &Value,
+        left: &Cell,
+        right: &Cell,
     ) -> Result<(), RuntimeError> {
         if left.is_number() && right.is_number() {
             Ok(())
@@ -259,12 +259,9 @@ mod tests {
 
     fn assert_evaluates_to<T>(source: &str, value: T)
     where
-        Value: From<T>,
+        Cell: From<T>,
     {
-        assert_eq!(
-            test_interpret_stmt_expr(source).unwrap(),
-            Value::from(value)
-        )
+        assert_eq!(test_interpret_stmt_expr(source).unwrap(), Cell::from(value))
     }
 
     fn assert_prints(source: &str, value: &[u8]) {
@@ -280,7 +277,7 @@ mod tests {
         Ok(output)
     }
 
-    fn test_interpret_stmt_expr(source: &str) -> Result<Value> {
+    fn test_interpret_stmt_expr(source: &str) -> Result<Cell> {
         let error_reporter = ErrorReporter::new();
         let tree = test_parse(source, &error_reporter).context("Parse error")?;
         let expr = tree[0].as_expr().unwrap();
