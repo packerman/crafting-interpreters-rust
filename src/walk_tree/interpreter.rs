@@ -257,6 +257,17 @@ mod tests {
         assert_prints(r#"print 2+3;"#, b"5\n");
     }
 
+    #[test]
+    fn define_var_works() {
+        assert_prints(
+            r#"
+        var a = 1;
+        var b = 2;
+        print a + b;"#,
+            b"3\n",
+        );
+    }
+
     fn assert_evaluates_to<T>(source: &str, value: T)
     where
         Cell: From<T>,
