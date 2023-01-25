@@ -107,12 +107,27 @@ impl<'a> Parser<'a> {
     }
 
     fn ternary(&mut self) -> Option<Box<Expr>> {
-        let expr = self.equality()?;
+        let expr = self.assigment()?;
         if self.match_single(&TokenKind::QuestionMark) {
             let then_expr = self.expression()?;
             self.consume(&TokenKind::Colon, || "Expect ':'.".into());
             let else_expr = self.expression()?;
             Some(Box::new(Expr::Ternary(expr, then_expr, else_expr)))
+        } else {
+            Some(expr)
+        }
+    }
+
+    fn assigment(&mut self) -> Option<Box<Expr>> {
+        let expr = self.equality()?;
+        if self.match_single(&TokenKind::Equal) {
+            let equals = self.previous().to_owned();
+            let value = self.assigment()?;
+            if let Expr::Variable(name) = expr.as_ref() {
+                Some(Box::new(Expr::Assignment(name.to_owned(), value)))
+            } else {
+                self.error(&equals, "Invalid assignment target.")
+            }
         } else {
             Some(expr)
         }

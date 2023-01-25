@@ -46,7 +46,7 @@ where
         }
     }
 
-    fn evaluate(&self, expr: &Expr) -> Result<Cell, RuntimeError> {
+    fn evaluate(&mut self, expr: &Expr) -> Result<Cell, RuntimeError> {
         match expr {
             Expr::Literal(literal) => self.evaluate_literal(literal),
             Expr::Grouping(expr) => self.evaluate(expr),
@@ -56,6 +56,7 @@ where
                 self.evaluate_ternary(condition, then_expr, else_expr)
             }
             Expr::Variable(name) => self.environment.get(name).map(|value| value.to_owned()),
+            Expr::Assignment(name, expr) => self.execute_assign_expr(name, expr),
         }
     }
 
@@ -69,7 +70,7 @@ where
         }
     }
 
-    fn execute_expression_stmt(&self, expr: &Expr) -> Result<(), RuntimeError> {
+    fn execute_expression_stmt(&mut self, expr: &Expr) -> Result<(), RuntimeError> {
         self.evaluate(expr)?;
         Ok(())
     }
@@ -94,11 +95,17 @@ where
         Ok(())
     }
 
+    fn execute_assign_expr(&mut self, name: &Token, expr: &Expr) -> Result<Cell, RuntimeError> {
+        let value = self.evaluate(expr)?;
+        self.environment.assign(name, value.to_owned())?;
+        Ok(value)
+    }
+
     fn evaluate_literal(&self, literal: &Cell) -> Result<Cell, RuntimeError> {
         Ok(literal.to_owned())
     }
 
-    fn evaluate_unary(&self, operator: &Token, right: &Expr) -> Result<Cell, RuntimeError> {
+    fn evaluate_unary(&mut self, operator: &Token, right: &Expr) -> Result<Cell, RuntimeError> {
         let right = self.evaluate(right)?;
         match operator.kind {
             TokenKind::Minus => {
@@ -111,7 +118,7 @@ where
     }
 
     fn evaluate_binary(
-        &self,
+        &mut self,
         left: &Expr,
         operator: &Token,
         right: &Expr,
@@ -166,7 +173,7 @@ where
     }
 
     fn evaluate_ternary(
-        &self,
+        &mut self,
         condition: &Expr,
         then_expr: &Expr,
         else_expr: &Expr,
@@ -268,6 +275,19 @@ mod tests {
         );
     }
 
+    #[test]
+    fn assignment_works() {
+        assert_prints(
+            r#"
+        var a = 1;
+        print a;
+        a = 2;
+        print a;
+        "#,
+            b"1\n2\n",
+        );
+    }
+
     fn assert_evaluates_to<T>(source: &str, value: T)
     where
         Cell: From<T>,
@@ -292,7 +312,7 @@ mod tests {
         let error_reporter = ErrorReporter::new();
         let tree = test_parse(source, &error_reporter).context("Parse error")?;
         let expr = tree[0].as_expr().unwrap();
-        let interpreter = Interpreter::new(&error_reporter);
+        let mut interpreter = Interpreter::new(&error_reporter);
         interpreter.evaluate(expr).context("Evaluating error")
     }
 
