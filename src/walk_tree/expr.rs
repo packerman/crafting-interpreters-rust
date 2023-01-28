@@ -31,14 +31,8 @@ impl From<()> for Expr {
     }
 }
 
-impl From<String> for Expr {
-    fn from(value: String) -> Self {
-        Self::Literal(Cell::from(value))
-    }
-}
-
 impl From<&str> for Expr {
     fn from(value: &str) -> Self {
-        Self::Literal(Cell::from(String::from(value)))
+        Self::Literal(Cell::from(value))
     }
 }

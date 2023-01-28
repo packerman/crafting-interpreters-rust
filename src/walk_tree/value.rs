@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, rc::Rc};
 
 use super::{error::RuntimeError, token::Token};
 
@@ -9,7 +9,7 @@ pub struct Cell(Option<Value>);
 pub enum Value {
     Boolean(bool),
     Number(f64),
-    String(String),
+    String(Rc<str>),
 }
 
 impl From<Value> for Cell {
@@ -31,8 +31,8 @@ impl From<f64> for Cell {
 }
 
 impl From<&str> for Cell {
-    fn from(v: &str) -> Self {
-        Self::from(Value::String(String::from(v)))
+    fn from(value: &str) -> Self {
+        Self::from(Value::String(Rc::from(value)))
     }
 }
 
@@ -56,7 +56,7 @@ impl TryFrom<Cell> for f64 {
 
 impl From<String> for Cell {
     fn from(v: String) -> Self {
-        Self::from(Value::String(v))
+        Self::from(Value::String(Rc::from(v)))
     }
 }
 
@@ -65,7 +65,7 @@ impl TryFrom<Cell> for String {
 
     fn try_from(value: Cell) -> Result<Self, Self::Error> {
         if let Some(Value::String(v)) = value.0 {
-            Ok(v)
+            Ok(v.to_string())
         } else {
             Err(String::from("Expect number."))
         }

@@ -134,7 +134,7 @@ where
                 if left.is_number() && right.is_number() {
                     value::binary_operation(|a: f64, b| a + b, left, operator, right)
                 } else if left.is_string() && right.is_string() {
-                    value::binary_operation(|a: String, b| a + &b, left, operator, right)
+                    value::binary_operation(|a: String, b| a.to_owned() + &b, left, operator, right)
                 } else {
                     Err(RuntimeError::new(
                         operator.to_owned(),
