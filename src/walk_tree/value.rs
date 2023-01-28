@@ -1,4 +1,4 @@
-use std::{fmt::Display, rc::Rc};
+use std::{fmt::Display, sync::Arc};
 
 use super::{error::RuntimeError, token::Token};
 
@@ -9,7 +9,7 @@ pub struct Cell(Option<Value>);
 pub enum Value {
     Boolean(bool),
     Number(f64),
-    String(Rc<str>),
+    String(Arc<str>),
 }
 
 impl From<Value> for Cell {
@@ -32,7 +32,13 @@ impl From<f64> for Cell {
 
 impl From<&str> for Cell {
     fn from(value: &str) -> Self {
-        Self::from(Value::String(Rc::from(value)))
+        Self::from(Value::String(Arc::from(value)))
+    }
+}
+
+impl From<Arc<str>> for Cell {
+    fn from(value: Arc<str>) -> Self {
+        Self::from(Value::String(value))
     }
 }
 
@@ -56,7 +62,7 @@ impl TryFrom<Cell> for f64 {
 
 impl From<String> for Cell {
     fn from(v: String) -> Self {
-        Self::from(Value::String(Rc::from(v)))
+        Self::from(Value::String(Arc::from(v)))
     }
 }
 

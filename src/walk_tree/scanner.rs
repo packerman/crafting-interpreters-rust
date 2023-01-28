@@ -163,7 +163,7 @@ impl<'a> ScanTokens<'a> {
         } else {
             self.advance();
             let value = self.copy_slice(self.start + 1, self.current - 1);
-            self.emit_token(TokenKind::String(value))
+            self.emit_token(TokenKind::String(Arc::from(value)))
         }
     }
 
@@ -340,7 +340,7 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::new(TokenKind::String("+ -".to_string()), "\"+ -\"".into(), 1),
+                Token::new(TokenKind::String("+ -".into()), "\"+ -\"".into(), 1),
                 Token::new(TokenKind::Eof, "".into(), 1)
             ]
         )

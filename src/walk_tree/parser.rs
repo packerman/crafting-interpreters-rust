@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use super::{
     error::ErrorReporter,
     expr::Expr,
     token::{Token, TokenKind},
+    value::Cell,
 };
 use crate::walk_tree::stmt::Stmt;
 
@@ -203,7 +206,7 @@ impl<'a> Parser<'a> {
         } else if let TokenKind::Number(number) = self.peek().kind {
             Some(Expr::from(number))
         } else if let TokenKind::String(string) = &self.peek().kind {
-            Some(Expr::from(string.as_str()))
+            Some(Expr::Literal(Cell::from(Arc::clone(&string))))
         } else {
             None
         };

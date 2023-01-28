@@ -49,7 +49,7 @@ pub enum TokenKind {
     LessEqual,
 
     Identifier,
-    String(String),
+    String(Arc<str>),
     Number(f64),
 
     And,
