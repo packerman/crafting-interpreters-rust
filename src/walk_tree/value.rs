@@ -30,24 +30,6 @@ impl From<f64> for Cell {
     }
 }
 
-impl From<&str> for Cell {
-    fn from(value: &str) -> Self {
-        Self::from(Value::String(Arc::from(value)))
-    }
-}
-
-impl From<Arc<str>> for Cell {
-    fn from(value: Arc<str>) -> Self {
-        Self::from(Value::String(value))
-    }
-}
-
-impl From<()> for Cell {
-    fn from(_value: ()) -> Self {
-        Self(None)
-    }
-}
-
 impl TryFrom<Cell> for f64 {
     type Error = String;
 
@@ -60,9 +42,9 @@ impl TryFrom<Cell> for f64 {
     }
 }
 
-impl From<String> for Cell {
-    fn from(v: String) -> Self {
-        Self::from(Value::String(Arc::from(v)))
+impl From<Arc<str>> for Cell {
+    fn from(value: Arc<str>) -> Self {
+        Self::from(Value::String(value))
     }
 }
 
@@ -75,6 +57,12 @@ impl TryFrom<Cell> for String {
         } else {
             Err(String::from("Expect number."))
         }
+    }
+}
+
+impl From<()> for Cell {
+    fn from(_value: ()) -> Self {
+        Self(None)
     }
 }
 

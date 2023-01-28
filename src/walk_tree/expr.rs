@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::{token::Token, value::Cell};
 
 pub type Operator = Token;
@@ -25,14 +27,14 @@ impl From<f64> for Expr {
     }
 }
 
-impl From<()> for Expr {
-    fn from(_value: ()) -> Self {
-        Self::Literal(Cell::from(()))
+impl From<Arc<str>> for Expr {
+    fn from(value: Arc<str>) -> Self {
+        Self::Literal(Cell::from(value))
     }
 }
 
-impl From<&str> for Expr {
-    fn from(value: &str) -> Self {
-        Self::Literal(Cell::from(value))
+impl From<()> for Expr {
+    fn from(_value: ()) -> Self {
+        Self::Literal(Cell::from(()))
     }
 }

@@ -310,7 +310,7 @@ mod tests {
         assert_eq!(test_parse_expr("nil").unwrap().as_ref(), &Expr::from(()));
         assert_eq!(
             test_parse_expr("\"abc\"").unwrap().as_ref(),
-            &Expr::from("abc")
+            &Expr::from(Arc::from("abc"))
         );
     }
 

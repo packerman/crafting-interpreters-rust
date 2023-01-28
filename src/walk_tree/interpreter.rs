@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::io::Write;
 use std::io::{self, Stdout};
+use std::sync::Arc;
 
 use crate::walk_tree::error::RuntimeError;
 use crate::walk_tree::stmt::Stmt;
@@ -134,7 +135,12 @@ where
                 if left.is_number() && right.is_number() {
                     value::binary_operation(|a: f64, b| a + b, left, operator, right)
                 } else if left.is_string() && right.is_string() {
-                    value::binary_operation(|a: String, b| a.to_owned() + &b, left, operator, right)
+                    value::binary_operation(
+                        |a: String, b| Arc::from(a.to_owned() + &b),
+                        left,
+                        operator,
+                        right,
+                    )
                 } else {
                     Err(RuntimeError::new(
                         operator.to_owned(),
@@ -216,6 +222,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use crate::walk_tree::{parser::Parser, scanner::Scanner};
     use anyhow::Context;
 
@@ -256,7 +264,7 @@ mod tests {
 
     #[test]
     fn concat_string_works() {
-        assert_evaluates_to(r#""ala" + " ma " + "kota";"#, "ala ma kota");
+        assert_evaluates_to(r#""ala" + " ma " + "kota";"#, Arc::from("ala ma kota"));
     }
 
     #[test]
