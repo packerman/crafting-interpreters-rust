@@ -3,7 +3,7 @@ use std::{fmt::Display, sync::Arc};
 use super::{error::RuntimeError, token::Token};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Cell(Option<Value>);
+pub struct Cell(Option<Arc<Value>>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -14,7 +14,7 @@ pub enum Value {
 
 impl From<Value> for Cell {
     fn from(value: Value) -> Self {
-        Self(Some(value))
+        Self(Some(Arc::new(value)))
     }
 }
 
@@ -52,8 +52,8 @@ impl TryFrom<Cell> for f64 {
     type Error = String;
 
     fn try_from(value: Cell) -> Result<Self, Self::Error> {
-        if let Some(Value::Number(v)) = value.0 {
-            Ok(v)
+        if let Some(Value::Number(v)) = value.0.as_deref() {
+            Ok(*v)
         } else {
             Err(String::from("Expect number."))
         }
@@ -70,7 +70,7 @@ impl TryFrom<Cell> for String {
     type Error = String;
 
     fn try_from(value: Cell) -> Result<Self, Self::Error> {
-        if let Some(Value::String(v)) = value.0 {
+        if let Some(Value::String(v)) = value.0.as_deref() {
             Ok(v.to_string())
         } else {
             Err(String::from("Expect number."))
@@ -80,7 +80,7 @@ impl TryFrom<Cell> for String {
 
 impl Display for Cell {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0.as_ref() {
+        match self.0.as_deref() {
             Some(Value::Boolean(value)) => write!(f, "{}", value),
             None => write!(f, "nil"),
             Some(Value::Number(value)) => write!(f, "{}", value),
@@ -91,7 +91,7 @@ impl Display for Cell {
 
 impl Cell {
     pub fn is_truthy(&self) -> bool {
-        match self.0.as_ref() {
+        match self.0.as_deref() {
             None => false,
             Some(Value::Boolean(value)) => value.to_owned(),
             _ => true,
@@ -99,11 +99,11 @@ impl Cell {
     }
 
     pub fn is_number(&self) -> bool {
-        matches!(self.0.as_ref(), Some(Value::Number(..)))
+        matches!(self.0.as_deref(), Some(Value::Number(..)))
     }
 
     pub fn is_string(&self) -> bool {
-        matches!(self.0.as_ref(), Some(Value::String(..)))
+        matches!(self.0.as_deref(), Some(Value::String(..)))
     }
 }
 
