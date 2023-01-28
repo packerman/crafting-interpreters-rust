@@ -129,14 +129,14 @@ where
         match operator.kind {
             TokenKind::Minus => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_operation(|a: f64, b| a + b, left, operator, right)
+                value::binary_operation(|a: f64, b: f64| a + b, left, operator, right)
             }
             TokenKind::Plus => {
                 if left.is_number() && right.is_number() {
-                    value::binary_operation(|a: f64, b| a + b, left, operator, right)
+                    value::binary_operation(|a: f64, b: f64| a + b, left, operator, right)
                 } else if left.is_string() && right.is_string() {
                     value::binary_operation(
-                        |a: String, b| Arc::from(a.to_owned() + &b),
+                        |a: String, b: Arc<str>| Arc::from(a.to_owned() + &b),
                         left,
                         operator,
                         right,
@@ -150,11 +150,11 @@ where
             }
             TokenKind::Slash => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_operation(|a: f64, b| a / b, left, operator, right)
+                value::binary_operation(|a: f64, b: f64| a / b, left, operator, right)
             }
             TokenKind::Star => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_operation(|a: f64, b| a * b, left, operator, right)
+                value::binary_operation(|a: f64, b: f64| a * b, left, operator, right)
             }
             TokenKind::Greater => {
                 self.check_number_operands(operator, &left, &right)?;

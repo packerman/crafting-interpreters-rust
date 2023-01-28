@@ -48,6 +48,18 @@ impl From<Arc<str>> for Cell {
     }
 }
 
+impl TryFrom<Cell> for Arc<str> {
+    type Error = String;
+
+    fn try_from(value: Cell) -> Result<Self, Self::Error> {
+        if let Some(Value::String(v)) = value.0.as_deref() {
+            Ok(Arc::clone(v))
+        } else {
+            Err(String::from("Expect number."))
+        }
+    }
+}
+
 impl TryFrom<Cell> for String {
     type Error = String;
 
@@ -111,16 +123,18 @@ where
     Ok(value)
 }
 
-pub fn binary_operation<T, R>(
-    operation: fn(T, T) -> R,
+pub fn binary_operation<T, R, S>(
+    operation: fn(T, R) -> S,
     left: Cell,
     operator: &Token,
     right: Cell,
 ) -> Result<Cell, RuntimeError>
 where
     T: TryFrom<Cell, Error = String>,
-    Cell: From<R>,
+    R: TryFrom<Cell, Error = String>,
+    Cell: From<S>,
     <T as TryFrom<Cell>>::Error: std::fmt::Debug,
+    <R as TryFrom<Cell>>::Error: std::fmt::Debug,
 {
     let value = Cell::from(operation(
         left.try_into()
