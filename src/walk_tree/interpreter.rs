@@ -91,7 +91,7 @@ where
         } else {
             Cell::from(())
         };
-        self.environment.define(name.lexeme.to_owned(), value);
+        self.environment.define(name, value);
         Ok(())
     }
 

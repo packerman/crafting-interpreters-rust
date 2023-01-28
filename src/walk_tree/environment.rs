@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use super::{error::RuntimeError, token::Token, value::Cell};
 
 #[derive(Debug)]
 pub struct Environment {
-    values: HashMap<String, Cell>,
+    values: HashMap<Arc<str>, Cell>,
 }
 
 impl Environment {
@@ -14,8 +14,8 @@ impl Environment {
         }
     }
 
-    pub fn define(&mut self, name: String, value: Cell) {
-        self.values.insert(name, value);
+    pub fn define(&mut self, name: &Token, value: Cell) {
+        self.values.insert(name.lexeme.to_owned(), value);
     }
 
     pub fn get(&self, name: &Token) -> Result<&Cell, RuntimeError> {

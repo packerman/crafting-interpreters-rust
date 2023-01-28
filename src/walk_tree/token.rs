@@ -1,14 +1,14 @@
-use std::fmt::Display;
+use std::{fmt::Display, sync::Arc};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
-    pub lexeme: String,
+    pub lexeme: Arc<str>,
     pub line: usize,
 }
 
 impl Token {
-    pub fn new(kind: TokenKind, lexeme: String, line: usize) -> Self {
+    pub fn new(kind: TokenKind, lexeme: Arc<str>, line: usize) -> Self {
         Self { kind, lexeme, line }
     }
 }

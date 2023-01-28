@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use super::{
     error::ErrorReporter,
@@ -230,7 +230,11 @@ impl<'a> ScanTokens<'a> {
     }
 
     fn emit_token(&self, kind: TokenKind) -> Option<Token> {
-        Some(Token::new(kind, self.current_lexeme(), self.line))
+        Some(Token::new(
+            kind,
+            Arc::from(self.current_lexeme()),
+            self.line,
+        ))
     }
 
     fn cond_emit(
@@ -289,7 +293,7 @@ mod tests {
     #[test]
     fn comment_works() {
         let tokens = self::scan_tokens("// this is a comment");
-        assert_eq!(tokens, vec![Token::new(TokenKind::Eof, "".to_string(), 1)])
+        assert_eq!(tokens, vec![Token::new(TokenKind::Eof, "".into(), 1)])
     }
 
     #[test]
@@ -298,13 +302,13 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::new(TokenKind::LeftParen, "(".to_string(), 1),
-                Token::new(TokenKind::LeftParen, "(".to_string(), 1),
-                Token::new(TokenKind::RightParen, ")".to_string(), 1),
-                Token::new(TokenKind::RightParen, ")".to_string(), 1),
-                Token::new(TokenKind::LeftBrace, "{".to_string(), 1),
-                Token::new(TokenKind::RightBrace, "}".to_string(), 1),
-                Token::new(TokenKind::Eof, "".to_string(), 1)
+                Token::new(TokenKind::LeftParen, "(".into(), 1),
+                Token::new(TokenKind::LeftParen, "(".into(), 1),
+                Token::new(TokenKind::RightParen, ")".into(), 1),
+                Token::new(TokenKind::RightParen, ")".into(), 1),
+                Token::new(TokenKind::LeftBrace, "{".into(), 1),
+                Token::new(TokenKind::RightBrace, "}".into(), 1),
+                Token::new(TokenKind::Eof, "".into(), 1)
             ]
         )
     }
@@ -315,17 +319,17 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::new(TokenKind::Bang, "!".to_string(), 1),
-                Token::new(TokenKind::Star, "*".to_string(), 1),
-                Token::new(TokenKind::Plus, "+".to_string(), 1),
-                Token::new(TokenKind::Minus, "-".to_string(), 1),
-                Token::new(TokenKind::Slash, "/".to_string(), 1),
-                Token::new(TokenKind::Equal, "=".to_string(), 1),
-                Token::new(TokenKind::Less, "<".to_string(), 1),
-                Token::new(TokenKind::Greater, ">".to_string(), 1),
-                Token::new(TokenKind::LessEqual, "<=".to_string(), 1),
-                Token::new(TokenKind::EqualEqual, "==".to_string(), 1),
-                Token::new(TokenKind::Eof, "".to_string(), 1)
+                Token::new(TokenKind::Bang, "!".into(), 1),
+                Token::new(TokenKind::Star, "*".into(), 1),
+                Token::new(TokenKind::Plus, "+".into(), 1),
+                Token::new(TokenKind::Minus, "-".into(), 1),
+                Token::new(TokenKind::Slash, "/".into(), 1),
+                Token::new(TokenKind::Equal, "=".into(), 1),
+                Token::new(TokenKind::Less, "<".into(), 1),
+                Token::new(TokenKind::Greater, ">".into(), 1),
+                Token::new(TokenKind::LessEqual, "<=".into(), 1),
+                Token::new(TokenKind::EqualEqual, "==".into(), 1),
+                Token::new(TokenKind::Eof, "".into(), 1)
             ]
         )
     }
@@ -336,12 +340,8 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::new(
-                    TokenKind::String("+ -".to_string()),
-                    "\"+ -\"".to_string(),
-                    1
-                ),
-                Token::new(TokenKind::Eof, "".to_string(), 1)
+                Token::new(TokenKind::String("+ -".to_string()), "\"+ -\"".into(), 1),
+                Token::new(TokenKind::Eof, "".into(), 1)
             ]
         )
     }
@@ -352,10 +352,10 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::new(TokenKind::Number(3.14), "3.14".to_string(), 1),
-                Token::new(TokenKind::Plus, "+".to_string(), 1),
-                Token::new(TokenKind::Number(1.0), "1".to_string(), 1),
-                Token::new(TokenKind::Eof, "".to_string(), 1)
+                Token::new(TokenKind::Number(3.14), "3.14".into(), 1),
+                Token::new(TokenKind::Plus, "+".into(), 1),
+                Token::new(TokenKind::Number(1.0), "1".into(), 1),
+                Token::new(TokenKind::Eof, "".into(), 1)
             ]
         )
     }
@@ -366,12 +366,12 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::new(TokenKind::And, "and".to_string(), 1),
-                Token::new(TokenKind::Identifier, "andaluzja".to_string(), 1),
-                Token::new(TokenKind::And, "and".to_string(), 1),
-                Token::new(TokenKind::Identifier, "aluzja".to_string(), 1),
-                Token::new(TokenKind::Identifier, "And".to_string(), 1),
-                Token::new(TokenKind::Eof, "".to_string(), 1)
+                Token::new(TokenKind::And, "and".into(), 1),
+                Token::new(TokenKind::Identifier, "andaluzja".into(), 1),
+                Token::new(TokenKind::And, "and".into(), 1),
+                Token::new(TokenKind::Identifier, "aluzja".into(), 1),
+                Token::new(TokenKind::Identifier, "And".into(), 1),
+                Token::new(TokenKind::Eof, "".into(), 1)
             ]
         )
     }
@@ -382,9 +382,9 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::new(TokenKind::Identifier, "a".to_string(), 1),
-                Token::new(TokenKind::Identifier, "b".to_string(), 1),
-                Token::new(TokenKind::Eof, "".to_string(), 1)
+                Token::new(TokenKind::Identifier, "a".into(), 1),
+                Token::new(TokenKind::Identifier, "b".into(), 1),
+                Token::new(TokenKind::Eof, "".into(), 1)
             ]
         )
     }
@@ -395,9 +395,9 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::new(TokenKind::Identifier, "a".to_string(), 1),
-                Token::new(TokenKind::Identifier, "b".to_string(), 1),
-                Token::new(TokenKind::Eof, "".to_string(), 1)
+                Token::new(TokenKind::Identifier, "a".into(), 1),
+                Token::new(TokenKind::Identifier, "b".into(), 1),
+                Token::new(TokenKind::Eof, "".into(), 1)
             ]
         )
     }
