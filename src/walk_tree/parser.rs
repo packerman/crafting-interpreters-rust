@@ -52,7 +52,7 @@ impl<'a> Parser<'a> {
         Some(statements)
     }
 
-    fn expression(&mut self) -> Option<Box<Expr>> {
+    pub fn expression(&mut self) -> Option<Box<Expr>> {
         self.ternary()
     }
 

@@ -1,7 +1,6 @@
 use anyhow::Result;
 use std::cell::RefCell;
 use std::io::Write;
-use std::io::{self, Stdout};
 use std::sync::Arc;
 
 use crate::walk_tree::error::RuntimeError;
@@ -19,12 +18,6 @@ pub struct Interpreter<'a, W> {
     error_reporter: &'a ErrorReporter,
     output: W,
     global_environment: Arc<RefCell<Environment>>,
-}
-
-impl<'a> Interpreter<'a, Stdout> {
-    pub fn new(error_reporter: &'a ErrorReporter) -> Self {
-        Self::new_with_output(error_reporter, io::stdout())
-    }
 }
 
 impl<'a, W> Interpreter<'a, W>
@@ -67,8 +60,10 @@ where
         }
     }
 
-    fn evaluate_in_global_environment(&mut self, expr: &Expr) -> Result<Cell, RuntimeError> {
-        self.evaluate(expr, &Arc::clone(&self.global_environment))
+    pub fn evaluate_and_print(&mut self, expr: &Expr) -> Result<Cell> {
+        let result = self.evaluate(expr, &Arc::clone(&self.global_environment))?;
+        writeln!(self.output, "{}", result)?;
+        Ok(result)
     }
 
     fn execute(
@@ -270,7 +265,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{io, sync::Arc};
 
     use crate::walk_tree::{parser::Parser, scanner::Scanner};
     use anyhow::Context;
@@ -396,9 +391,10 @@ mod tests {
         let error_reporter = ErrorReporter::new();
         let tree = test_parse(source, &error_reporter).context("Parse error")?;
         let expr = tree[0].as_expr().unwrap();
-        let mut interpreter = Interpreter::new(&error_reporter);
+        let mut output = io::stdout();
+        let mut interpreter = Interpreter::new_with_output(&error_reporter, &mut output);
         interpreter
-            .evaluate_in_global_environment(expr)
+            .evaluate_and_print(expr)
             .context("Evaluating error")
     }
 
