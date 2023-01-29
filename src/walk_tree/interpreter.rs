@@ -171,7 +171,7 @@ where
         match operator.kind {
             TokenKind::Minus => {
                 self.check_number_operands(operator, &left, &right)?;
-                value::binary_operation(|a: f64, b: f64| a + b, left, operator, right)
+                value::binary_operation(|a: f64, b: f64| a - b, left, operator, right)
             }
             TokenKind::Plus => {
                 if left.is_number() && right.is_number() {
