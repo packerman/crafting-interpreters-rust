@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::cell::RefCell;
 use std::io::Write;
 use std::sync::Arc;
@@ -61,9 +61,14 @@ where
     }
 
     pub fn evaluate_and_print(&mut self, expr: &Expr) -> Result<Cell> {
-        let result = self.evaluate(expr, &Arc::clone(&self.global_environment))?;
-        writeln!(self.output, "{}", result)?;
-        Ok(result)
+        let result = self.evaluate(expr, &Arc::clone(&self.global_environment));
+        match &result {
+            Ok(result) => {
+                writeln!(self.output, "{}", result)?;
+            }
+            Err(error) => self.error_reporter.runtime_error(error),
+        }
+        result.map_err(|err| anyhow!("Evaluate error: {}", err))
     }
 
     fn execute(

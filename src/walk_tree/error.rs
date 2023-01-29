@@ -5,6 +5,7 @@ use super::token::{Token, TokenKind};
 pub struct ErrorReporter {
     had_error: Cell<bool>,
     had_runtime_error: Cell<bool>,
+    print_on_error: Cell<bool>,
 }
 
 impl ErrorReporter {
@@ -12,6 +13,7 @@ impl ErrorReporter {
         Self {
             had_error: Cell::new(false),
             had_runtime_error: Cell::new(false),
+            print_on_error: Cell::new(true),
         }
     }
 
@@ -33,7 +35,9 @@ impl ErrorReporter {
     }
 
     fn report(&self, line: usize, where_part: &str, message: &str) {
-        eprintln!("[line {}] Error{}: {}", line, where_part, message);
+        if self.print_on_error.get() {
+            eprintln!("[line {}] Error{}: {}", line, where_part, message);
+        }
         self.had_error.set(true)
     }
 
@@ -48,6 +52,16 @@ impl ErrorReporter {
     pub fn runtime_error(&self, error: &RuntimeError) {
         eprintln!("{}", error);
         self.had_runtime_error.set(true);
+    }
+
+    pub fn run_without_printing_error<F, R>(&self, mut action: F) -> R
+    where
+        F: FnMut() -> R,
+    {
+        self.print_on_error.set(false);
+        let result = action();
+        self.print_on_error.set(true);
+        result
     }
 }
 

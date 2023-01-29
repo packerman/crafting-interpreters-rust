@@ -44,7 +44,7 @@ where
             match read_line {
                 Ok(line) => {
                     editor.add_history_entry(line.as_str());
-                    self.run_interactively(line)?;
+                    self.run_interactively(line);
                 }
                 Err(ReadlineError::Interrupted) => {
                     println!("CTRL-C");
@@ -74,14 +74,19 @@ where
         self.interpreter.interpret(&statements)
     }
 
-    fn run_interactively(&mut self, line: String) -> Result<()> {
-        self.try_evaluate_expression(&line)?;
+    fn run_interactively(&mut self, line: String) {
+        let result = self
+            .error_reporter
+            .run_without_printing_error(|| self.try_evaluate_expression(&line));
+        if result.is_err() {
+            self.error_reporter.reset();
+            return;
+        }
         if self.error_reporter.had_error() {
             self.error_reporter.reset();
             self.run(line);
         }
         self.error_reporter.reset();
-        Ok(())
     }
 
     fn try_evaluate_expression(&mut self, source: &str) -> Result<()> {
@@ -131,7 +136,7 @@ mod tests {
         let mut output = Vec::new();
         let mut lox = Lox::new(&error_reporter, &mut output);
         for line in lines.into_iter() {
-            lox.run_interactively(line)?;
+            lox.run_interactively(line);
         }
         Ok(output)
     }
