@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::cell::RefCell;
 use std::io::Write;
 use std::io::{self, Stdout};
 use std::sync::Arc;
@@ -17,7 +18,7 @@ use super::{
 pub struct Interpreter<'a, W> {
     error_reporter: &'a ErrorReporter,
     output: W,
-    environment: Environment,
+    global_environment: Arc<RefCell<Environment>>,
 }
 
 impl<'a> Interpreter<'a, Stdout> {
@@ -34,50 +35,84 @@ where
         Self {
             error_reporter,
             output,
-            environment: Environment::new(),
+            global_environment: Environment::new(),
         }
     }
 
     pub fn interpret(&mut self, statements: &[Stmt]) {
+        let env = Arc::clone(&self.global_environment);
         for statement in statements {
-            if let Err(error) = self.execute(statement) {
+            if let Err(error) = self.execute(statement, &env) {
                 self.error_reporter.runtime_error(&error);
                 return;
             }
         }
     }
 
-    fn evaluate(&mut self, expr: &Expr) -> Result<Cell, RuntimeError> {
+    fn evaluate(
+        &mut self,
+        expr: &Expr,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
         match expr {
             Expr::Literal(literal) => self.evaluate_literal(literal),
-            Expr::Grouping(expr) => self.evaluate(expr),
-            Expr::Unary(operator, operand) => self.evaluate_unary(operator, operand),
-            Expr::Binary(left, operator, right) => self.evaluate_binary(left, operator, right),
+            Expr::Grouping(expr) => self.evaluate(expr, env),
+            Expr::Unary(operator, operand) => self.evaluate_unary(operator, operand, env),
+            Expr::Binary(left, operator, right) => self.evaluate_binary(left, operator, right, env),
             Expr::Ternary(condition, then_expr, else_expr) => {
-                self.evaluate_ternary(condition, then_expr, else_expr)
+                self.evaluate_ternary(condition, then_expr, else_expr, env)
             }
-            Expr::Variable(name) => self.environment.get(name).map(|value| value.to_owned()),
-            Expr::Assignment(name, expr) => self.execute_assign_expr(name, expr),
+            Expr::Variable(name) => env.borrow().get(name).map(|value| value.to_owned()),
+            Expr::Assignment(name, expr) => self.execute_assign_expr(name, expr, env),
         }
     }
 
-    fn execute(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
+    fn evaluate_in_global_environment(&mut self, expr: &Expr) -> Result<Cell, RuntimeError> {
+        self.evaluate(expr, &Arc::clone(&self.global_environment))
+    }
+
+    fn execute(
+        &mut self,
+        stmt: &Stmt,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<(), RuntimeError> {
         match stmt {
-            Stmt::Expr(expr) => self.execute_expression_stmt(expr),
-            Stmt::Print(expr) => self.execute_print_stmt(expr),
+            Stmt::Block(stmts) => self.execute_block_stmt(stmts, env),
+            Stmt::Expr(expr) => self.execute_expression_stmt(expr, env),
+            Stmt::Print(expr) => self.execute_print_stmt(expr, env),
             Stmt::VarDeclaration(name, initializer) => {
-                self.execute_var_stmt(name, initializer.as_deref())
+                self.execute_var_stmt(name, initializer.as_deref(), env)
             }
         }
     }
 
-    fn execute_expression_stmt(&mut self, expr: &Expr) -> Result<(), RuntimeError> {
-        self.evaluate(expr)?;
+    fn execute_block_stmt(
+        &mut self,
+        statements: &[Stmt],
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<(), RuntimeError> {
+        let environment = Environment::new_with_enclosing(Arc::clone(env));
+        for statement in statements {
+            self.execute(statement, &environment)?;
+        }
         Ok(())
     }
 
-    fn execute_print_stmt(&mut self, expr: &Expr) -> Result<(), RuntimeError> {
-        let value = self.evaluate(expr)?;
+    fn execute_expression_stmt(
+        &mut self,
+        expr: &Expr,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<(), RuntimeError> {
+        self.evaluate(expr, env)?;
+        Ok(())
+    }
+
+    fn execute_print_stmt(
+        &mut self,
+        expr: &Expr,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<(), RuntimeError> {
+        let value = self.evaluate(expr, env)?;
         writeln!(self.output, "{}", value)
             .map_err(|err| RuntimeError::from(format!("Print error: {}", err)))
     }
@@ -86,19 +121,25 @@ where
         &mut self,
         name: &Token,
         initializer: Option<&Expr>,
+        env: &Arc<RefCell<Environment>>,
     ) -> Result<(), RuntimeError> {
         let value = if let Some(initializer) = initializer {
-            self.evaluate(initializer)?
+            self.evaluate(initializer, env)?
         } else {
             Cell::from(())
         };
-        self.environment.define(name, value);
+        env.borrow_mut().define(name, value);
         Ok(())
     }
 
-    fn execute_assign_expr(&mut self, name: &Token, expr: &Expr) -> Result<Cell, RuntimeError> {
-        let value = self.evaluate(expr)?;
-        self.environment.assign(name, value.to_owned())?;
+    fn execute_assign_expr(
+        &mut self,
+        name: &Token,
+        expr: &Expr,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
+        let value = self.evaluate(expr, env)?;
+        env.borrow_mut().assign(name, value.to_owned())?;
         Ok(value)
     }
 
@@ -106,8 +147,13 @@ where
         Ok(literal.to_owned())
     }
 
-    fn evaluate_unary(&mut self, operator: &Token, right: &Expr) -> Result<Cell, RuntimeError> {
-        let right = self.evaluate(right)?;
+    fn evaluate_unary(
+        &mut self,
+        operator: &Token,
+        right: &Expr,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
+        let right = self.evaluate(right, env)?;
         match operator.kind {
             TokenKind::Minus => {
                 self.check_number_operand(operator, &right)?;
@@ -123,9 +169,10 @@ where
         left: &Expr,
         operator: &Token,
         right: &Expr,
+        env: &Arc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
-        let left = self.evaluate(left)?;
-        let right = self.evaluate(right)?;
+        let left = self.evaluate(left, env)?;
+        let right = self.evaluate(right, env)?;
         match operator.kind {
             TokenKind::Minus => {
                 self.check_number_operands(operator, &left, &right)?;
@@ -183,12 +230,13 @@ where
         condition: &Expr,
         then_expr: &Expr,
         else_expr: &Expr,
+        env: &Arc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
-        let condition = self.evaluate(condition)?;
+        let condition = self.evaluate(condition, env)?;
         if condition.is_truthy() {
-            self.evaluate(then_expr)
+            self.evaluate(then_expr, env)
         } else {
-            self.evaluate(else_expr)
+            self.evaluate(else_expr, env)
         }
     }
 
@@ -296,6 +344,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn block_works() {
+        assert_prints(
+            r#"
+            var a = "global a";
+            var b = "global b";
+            var c = "global c";
+            {
+                var a = "outer a";
+                var b = "outer b";
+                {
+                    var a = "inner a";
+                    print a;
+                    print b;
+                    print c;
+                }
+                print a;
+                print b;
+                print c;
+            }
+            print a;
+            print b;
+            print c;
+        "#,
+            b"inner a\nouter b\nglobal c\nouter a\nouter b\nglobal c\nglobal a\nglobal b\nglobal c\n",
+        );
+    }
+
     fn assert_evaluates_to<T>(source: &str, value: T)
     where
         Cell: From<T>,
@@ -321,7 +397,9 @@ mod tests {
         let tree = test_parse(source, &error_reporter).context("Parse error")?;
         let expr = tree[0].as_expr().unwrap();
         let mut interpreter = Interpreter::new(&error_reporter);
-        interpreter.evaluate(expr).context("Evaluating error")
+        interpreter
+            .evaluate_in_global_environment(expr)
+            .context("Evaluating error")
     }
 
     fn test_parse(source: &str, error_reporter: &ErrorReporter) -> Option<Vec<Stmt>> {

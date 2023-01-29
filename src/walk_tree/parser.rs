@@ -75,6 +75,8 @@ impl<'a> Parser<'a> {
     fn statement(&mut self) -> Option<Stmt> {
         if self.match_single(&TokenKind::Print) {
             self.print_statement()
+        } else if self.match_single(&TokenKind::LeftBrace) {
+            self.block()
         } else {
             self.expression_statement()
         }
@@ -107,6 +109,19 @@ impl<'a> Parser<'a> {
             "Expect ';' after expression.".into()
         })?;
         Some(Stmt::Expr(expr))
+    }
+
+    fn block(&mut self) -> Option<Stmt> {
+        self.stmt_vec().map(Stmt::Block)
+    }
+
+    fn stmt_vec(&mut self) -> Option<Vec<Stmt>> {
+        let mut statements = Vec::new();
+        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            statements.push(self.declaration()?);
+        }
+        self.consume(&TokenKind::RightBrace, || "Expect '}' after block.".into());
+        Some(statements)
     }
 
     fn ternary(&mut self) -> Option<Box<Expr>> {

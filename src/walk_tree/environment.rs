@@ -9,18 +9,18 @@ pub struct Environment {
 }
 
 impl Environment {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Arc<RefCell<Self>> {
+        Arc::new(RefCell::new(Self {
             enclosing: None,
             values: HashMap::new(),
-        }
+        }))
     }
 
-    pub fn new_with_enclosing(enclosing: Arc<RefCell<Environment>>) -> Self {
-        Self {
+    pub fn new_with_enclosing(enclosing: Arc<RefCell<Environment>>) -> Arc<RefCell<Self>> {
+        Arc::new(RefCell::new(Self {
             enclosing: Some(enclosing),
             values: HashMap::new(),
-        }
+        }))
     }
 
     pub fn define(&mut self, name: &Token, value: Cell) {
