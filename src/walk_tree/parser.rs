@@ -53,7 +53,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn expression(&mut self) -> Option<Box<Expr>> {
-        self.ternary()
+        self.assigment()
     }
 
     fn declaration(&mut self) -> Option<Stmt> {
@@ -124,20 +124,8 @@ impl<'a> Parser<'a> {
         Some(statements)
     }
 
-    fn ternary(&mut self) -> Option<Box<Expr>> {
-        let expr = self.assigment()?;
-        if self.match_single(&TokenKind::QuestionMark) {
-            let then_expr = self.expression()?;
-            self.consume(&TokenKind::Colon, || "Expect ':'.".into());
-            let else_expr = self.expression()?;
-            Some(Box::new(Expr::Ternary(expr, then_expr, else_expr)))
-        } else {
-            Some(expr)
-        }
-    }
-
     fn assigment(&mut self) -> Option<Box<Expr>> {
-        let expr = self.equality()?;
+        let expr = self.ternary()?;
         if self.match_single(&TokenKind::Equal) {
             let equals = self.previous().to_owned();
             let value = self.assigment()?;
@@ -146,6 +134,18 @@ impl<'a> Parser<'a> {
             } else {
                 self.error(&equals, "Invalid assignment target.")
             }
+        } else {
+            Some(expr)
+        }
+    }
+
+    fn ternary(&mut self) -> Option<Box<Expr>> {
+        let expr = self.equality()?;
+        if self.match_single(&TokenKind::QuestionMark) {
+            let then_expr = self.expression()?;
+            self.consume(&TokenKind::Colon, || "Expect ':'.".into());
+            let else_expr = self.expression()?;
+            Some(Box::new(Expr::Ternary(expr, then_expr, else_expr)))
         } else {
             Some(expr)
         }
@@ -401,6 +401,21 @@ mod tests {
                 )),
                 Box::new(Expr::from(4.0)),
                 Box::new(Expr::from(5.0))
+            )
+        );
+    }
+
+    #[test]
+    fn assignment_has_lower_predence_than_ternary() {
+        assert_eq!(
+            test_parse_expr("a = 3 ? 4 : 5").unwrap().as_ref(),
+            &Expr::Assignment(
+                Token::new(TokenKind::Identifier, "a".into(), 1),
+                Box::new(Expr::Ternary(
+                    Box::new(Expr::from(3.0)),
+                    Box::new(Expr::from(4.0)),
+                    Box::new(Expr::from(5.0))
+                ))
             )
         );
     }
