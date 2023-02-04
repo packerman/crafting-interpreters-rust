@@ -81,10 +81,10 @@ impl From<()> for Cell {
 impl Display for Cell {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.0.as_deref() {
-            Some(Value::Boolean(value)) => write!(f, "{}", value),
+            Some(Value::Boolean(value)) => write!(f, "{value}"),
             None => write!(f, "nil"),
-            Some(Value::Number(value)) => write!(f, "{}", value),
-            Some(Value::String(value)) => write!(f, "{}", value),
+            Some(Value::Number(value)) => write!(f, "{value}"),
+            Some(Value::String(value)) => write!(f, "{value}"),
         }
     }
 }

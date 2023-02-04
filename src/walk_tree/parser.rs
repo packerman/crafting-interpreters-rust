@@ -90,7 +90,7 @@ impl<'a> Parser<'a> {
 
     fn var_declaration(&mut self) -> Option<Stmt> {
         let name = self
-            .consume(&TokenKind::Identifier, || format!("Expect variable name."))?
+            .consume(&TokenKind::Identifier, || "Expect variable name.".to_string())?
             .to_owned();
         let initializer = if self.match_single(&TokenKind::Equal) {
             self.expression()
@@ -98,7 +98,7 @@ impl<'a> Parser<'a> {
             None
         };
         self.consume(&TokenKind::Semicolon, || {
-            format!("Expect ';' after variable declaration.")
+            "Expect ';' after variable declaration.".to_string()
         })?;
         Some(Stmt::VarDeclaration(name, initializer))
     }
@@ -221,7 +221,7 @@ impl<'a> Parser<'a> {
         } else if let TokenKind::Number(number) = self.peek().kind {
             Some(Expr::from(number))
         } else if let TokenKind::String(string) = &self.peek().kind {
-            Some(Expr::Literal(Cell::from(Arc::clone(&string))))
+            Some(Expr::Literal(Cell::from(Arc::clone(string))))
         } else {
             None
         };

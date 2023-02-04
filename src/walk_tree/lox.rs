@@ -55,7 +55,7 @@ where
                     break;
                 }
                 Err(err) => {
-                    eprintln!("Read line error: {:?}", err);
+                    eprintln!("Read line error: {err:?}");
                     break;
                 }
             }

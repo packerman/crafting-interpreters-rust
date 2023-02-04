@@ -36,7 +36,7 @@ impl ErrorReporter {
 
     fn report(&self, line: usize, where_part: &str, message: &str) {
         if self.print_on_error.get() {
-            eprintln!("[line {}] Error{}: {}", line, where_part, message);
+            eprintln!("[line {line}] Error{where_part}: {message}");
         }
         self.had_error.set(true)
     }
@@ -50,7 +50,7 @@ impl ErrorReporter {
     }
 
     pub fn runtime_error(&self, error: &RuntimeError) {
-        eprintln!("{}", error);
+        eprintln!("{error}");
         self.had_runtime_error.set(true);
     }
 

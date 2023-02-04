@@ -55,7 +55,7 @@ where
             Expr::Ternary(condition, then_expr, else_expr) => {
                 self.evaluate_ternary(condition, then_expr, else_expr, env)
             }
-            Expr::Variable(name) => env.borrow().get(name).map(|value| value.to_owned()),
+            Expr::Variable(name) => env.borrow().get(name),
             Expr::Assignment(name, expr) => self.execute_assign_expr(name, expr, env),
         }
     }
@@ -64,7 +64,7 @@ where
         let result = self.evaluate(expr, &Arc::clone(&self.global_environment));
         match &result {
             Ok(result) => {
-                writeln!(self.output, "{}", result)?;
+                writeln!(self.output, "{result}")?;
             }
             Err(error) => self.error_reporter.runtime_error(error),
         }
@@ -113,8 +113,8 @@ where
         env: &Arc<RefCell<Environment>>,
     ) -> Result<(), RuntimeError> {
         let value = self.evaluate(expr, env)?;
-        writeln!(self.output, "{}", value)
-            .map_err(|err| RuntimeError::from(format!("Print error: {}", err)))
+        writeln!(self.output, "{value}")
+            .map_err(|err| RuntimeError::from(format!("Print error: {err}")))
     }
 
     fn execute_var_stmt(
@@ -183,7 +183,7 @@ where
                     value::binary_operation(|a: f64, b: f64| a + b, left, operator, right)
                 } else if left.is_string() && right.is_string() {
                     value::binary_operation(
-                        |a: String, b: Arc<str>| Arc::from(a.to_owned() + &b),
+                        |a: String, b: Arc<str>| Arc::from(a + &b),
                         left,
                         operator,
                         right,
