@@ -1,4 +1,4 @@
-use std::{env, process::ExitCode};
+use std::{env, io, process::ExitCode};
 
 use anyhow::Result;
 use crafting_interpreters_rust::walk_tree::{error::ErrorReporter, exit_code, lox::Lox};
@@ -10,7 +10,7 @@ fn main() -> Result<ExitCode> {
         return Ok(exit_code::usage());
     }
     let error_reporter = ErrorReporter::new();
-    let lox = Lox::new(&error_reporter);
+    let mut lox = Lox::new(&error_reporter, io::stdout());
     if args.len() == 2 {
         lox.run_file(&args[1])
     } else {

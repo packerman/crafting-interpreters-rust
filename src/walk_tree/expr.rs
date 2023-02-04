@@ -1,4 +1,6 @@
-use super::{token::Token, value::Value};
+use std::sync::Arc;
+
+use super::{token::Token, value::Cell};
 
 pub type Operator = Token;
 
@@ -6,37 +8,33 @@ pub type Operator = Token;
 pub enum Expr {
     Binary(Box<Expr>, Operator, Box<Expr>),
     Unary(Operator, Box<Expr>),
-    Literal(Value),
+    Literal(Cell),
     Grouping(Box<Expr>),
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
+    Variable(Token),
+    Assignment(Token, Box<Expr>),
 }
 
 impl From<bool> for Expr {
     fn from(value: bool) -> Self {
-        Self::Literal(Value::Boolean(value))
+        Self::Literal(Cell::from(value))
     }
 }
 
 impl From<f64> for Expr {
     fn from(value: f64) -> Self {
-        Self::Literal(Value::Number(value))
+        Self::Literal(Cell::from(value))
+    }
+}
+
+impl From<Arc<str>> for Expr {
+    fn from(value: Arc<str>) -> Self {
+        Self::Literal(Cell::from(value))
     }
 }
 
 impl From<()> for Expr {
     fn from(_value: ()) -> Self {
-        Self::Literal(Value::Nil)
-    }
-}
-
-impl From<String> for Expr {
-    fn from(value: String) -> Self {
-        Self::Literal(Value::String(value))
-    }
-}
-
-impl From<&str> for Expr {
-    fn from(value: &str) -> Self {
-        Self::Literal(Value::String(String::from(value)))
+        Self::Literal(Cell::from(()))
     }
 }

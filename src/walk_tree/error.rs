@@ -5,6 +5,7 @@ use super::token::{Token, TokenKind};
 pub struct ErrorReporter {
     had_error: Cell<bool>,
     had_runtime_error: Cell<bool>,
+    print_on_error: Cell<bool>,
 }
 
 impl ErrorReporter {
@@ -12,6 +13,7 @@ impl ErrorReporter {
         Self {
             had_error: Cell::new(false),
             had_runtime_error: Cell::new(false),
+            print_on_error: Cell::new(true),
         }
     }
 
@@ -33,7 +35,9 @@ impl ErrorReporter {
     }
 
     fn report(&self, line: usize, where_part: &str, message: &str) {
-        eprintln!("[line {}] Error{}: {}", line, where_part, message);
+        if self.print_on_error.get() {
+            eprintln!("[line {line}] Error{where_part}: {message}");
+        }
         self.had_error.set(true)
     }
 
@@ -46,8 +50,18 @@ impl ErrorReporter {
     }
 
     pub fn runtime_error(&self, error: &RuntimeError) {
-        eprintln!("{}\n[line {}]", error.message, error.token.line);
+        eprintln!("{error}");
         self.had_runtime_error.set(true);
+    }
+
+    pub fn run_without_printing_error<F, R>(&self, mut action: F) -> R
+    where
+        F: FnMut() -> R,
+    {
+        self.print_on_error.set(false);
+        let result = action();
+        self.print_on_error.set(true);
+        result
     }
 }
 
@@ -59,14 +73,14 @@ impl Default for ErrorReporter {
 
 #[derive(Debug)]
 pub struct RuntimeError {
-    pub token: Token,
+    pub token: Option<Token>,
     pub message: String,
 }
 
 impl RuntimeError {
     pub fn new(token: Token, message: &str) -> Self {
         Self {
-            token,
+            token: Some(token),
             message: String::from(message),
         }
     }
@@ -74,7 +88,20 @@ impl RuntimeError {
 
 impl Display for RuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Runtime error at {}: {}", self.token, self.message)
+        if let Some(token) = &self.token {
+            write!(f, "{}\n[line {}]", self.message, token.line)
+        } else {
+            write!(f, "Runtime error: {}", self.message)
+        }
+    }
+}
+
+impl From<String> for RuntimeError {
+    fn from(message: String) -> Self {
+        Self {
+            token: None,
+            message,
+        }
     }
 }
 

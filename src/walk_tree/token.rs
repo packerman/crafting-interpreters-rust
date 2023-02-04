@@ -1,14 +1,14 @@
-use std::fmt::Display;
+use std::{fmt::Display, sync::Arc};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
-    pub lexeme: String,
+    pub lexeme: Arc<str>,
     pub line: usize,
 }
 
 impl Token {
-    pub fn new(kind: TokenKind, lexeme: String, line: usize) -> Self {
+    pub fn new(kind: TokenKind, lexeme: Arc<str>, line: usize) -> Self {
         Self { kind, lexeme, line }
     }
 }
@@ -49,7 +49,7 @@ pub enum TokenKind {
     LessEqual,
 
     Identifier,
-    String(String),
+    String(Arc<str>),
     Number(f64),
 
     And,
@@ -96,8 +96,8 @@ impl Display for TokenKind {
             TokenKind::Less => write!(f, "<"),
             TokenKind::LessEqual => write!(f, "<="),
             TokenKind::Identifier => write!(f, ""),
-            TokenKind::String(s) => write!(f, "\"{}\"", s),
-            TokenKind::Number(n) => write!(f, "\"{}\"", n),
+            TokenKind::String(s) => write!(f, "\"{s}\""),
+            TokenKind::Number(n) => write!(f, "\"{n}\""),
             TokenKind::And => write!(f, "and"),
             TokenKind::Class => write!(f, "class"),
             TokenKind::Else => write!(f, "else"),

@@ -1,8 +1,12 @@
+use std::sync::Arc;
+
 use super::{
     error::ErrorReporter,
     expr::Expr,
     token::{Token, TokenKind},
+    value::Cell,
 };
+use crate::walk_tree::stmt::Stmt;
 
 pub struct Parser<'a> {
     tokens: Vec<Token>,
@@ -40,12 +44,99 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> Option<Box<Expr>> {
-        self.expression()
+    pub fn parse(&mut self) -> Option<Vec<Stmt>> {
+        let mut statements = Vec::new();
+        while !self.is_at_end() {
+            statements.push(self.declaration()?)
+        }
+        Some(statements)
     }
 
-    fn expression(&mut self) -> Option<Box<Expr>> {
-        self.ternary()
+    pub fn expression(&mut self) -> Option<Box<Expr>> {
+        self.assigment()
+    }
+
+    fn declaration(&mut self) -> Option<Stmt> {
+        let result = self.try_declaration();
+        if matches!(result, None) {
+            self.synchronize();
+        }
+        result
+    }
+
+    fn try_declaration(&mut self) -> Option<Stmt> {
+        if self.match_single(&TokenKind::Var) {
+            self.var_declaration()
+        } else {
+            self.statement()
+        }
+    }
+
+    fn statement(&mut self) -> Option<Stmt> {
+        if self.match_single(&TokenKind::Print) {
+            self.print_statement()
+        } else if self.match_single(&TokenKind::LeftBrace) {
+            self.block()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    fn print_statement(&mut self) -> Option<Stmt> {
+        let value = self.expression()?;
+        self.consume(&TokenKind::Semicolon, || "Expect ';' after value.".into())?;
+        Some(Stmt::Print(value))
+    }
+
+    fn var_declaration(&mut self) -> Option<Stmt> {
+        let name = self
+            .consume(&TokenKind::Identifier, || "Expect variable name.".to_string())?
+            .to_owned();
+        let initializer = if self.match_single(&TokenKind::Equal) {
+            self.expression()
+        } else {
+            None
+        };
+        self.consume(&TokenKind::Semicolon, || {
+            "Expect ';' after variable declaration.".to_string()
+        })?;
+        Some(Stmt::VarDeclaration(name, initializer))
+    }
+
+    fn expression_statement(&mut self) -> Option<Stmt> {
+        let expr = self.expression()?;
+        self.consume(&TokenKind::Semicolon, || {
+            "Expect ';' after expression.".into()
+        })?;
+        Some(Stmt::Expr(expr))
+    }
+
+    fn block(&mut self) -> Option<Stmt> {
+        self.stmt_vec().map(Stmt::Block)
+    }
+
+    fn stmt_vec(&mut self) -> Option<Vec<Stmt>> {
+        let mut statements = Vec::new();
+        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            statements.push(self.declaration()?);
+        }
+        self.consume(&TokenKind::RightBrace, || "Expect '}' after block.".into());
+        Some(statements)
+    }
+
+    fn assigment(&mut self) -> Option<Box<Expr>> {
+        let expr = self.ternary()?;
+        if self.match_single(&TokenKind::Equal) {
+            let equals = self.previous().to_owned();
+            let value = self.assigment()?;
+            if let Expr::Variable(name) = expr.as_ref() {
+                Some(Box::new(Expr::Assignment(name.to_owned(), value)))
+            } else {
+                self.error(&equals, "Invalid assignment target.")
+            }
+        } else {
+            Some(expr)
+        }
     }
 
     fn ternary(&mut self) -> Option<Box<Expr>> {
@@ -110,6 +201,8 @@ impl<'a> Parser<'a> {
             Expr::from(())
         } else if let Some(literal) = self.literal() {
             literal
+        } else if self.match_single(&TokenKind::Identifier) {
+            Expr::Variable(self.previous().to_owned())
         } else if self.match_single(&TokenKind::LeftParen) {
             let expr = self.expression()?;
             self.consume(&TokenKind::RightParen, || {
@@ -128,7 +221,7 @@ impl<'a> Parser<'a> {
         } else if let TokenKind::Number(number) = self.peek().kind {
             Some(Expr::from(number))
         } else if let TokenKind::String(string) = &self.peek().kind {
-            Some(Expr::from(string.as_str()))
+            Some(Expr::Literal(Cell::from(Arc::clone(string))))
         } else {
             None
         };
@@ -232,7 +325,7 @@ mod tests {
         assert_eq!(test_parse_expr("nil").unwrap().as_ref(), &Expr::from(()));
         assert_eq!(
             test_parse_expr("\"abc\"").unwrap().as_ref(),
-            &Expr::from("abc")
+            &Expr::from(Arc::from("abc"))
         );
     }
 
@@ -312,11 +405,26 @@ mod tests {
         );
     }
 
+    #[test]
+    fn assignment_has_lower_predence_than_ternary() {
+        assert_eq!(
+            test_parse_expr("a = 3 ? 4 : 5").unwrap().as_ref(),
+            &Expr::Assignment(
+                Token::new(TokenKind::Identifier, "a".into(), 1),
+                Box::new(Expr::Ternary(
+                    Box::new(Expr::from(3.0)),
+                    Box::new(Expr::from(4.0)),
+                    Box::new(Expr::from(5.0))
+                ))
+            )
+        );
+    }
+
     fn test_parse_expr(source: &str) -> Option<Box<Expr>> {
         let error_reporer = ErrorReporter::new();
         let scanner = Scanner::new(&error_reporer);
         let tokens: Vec<_> = scanner.scan_tokens(source).collect();
         let mut parser = Parser::new(tokens, &error_reporer);
-        parser.parse()
+        parser.expression()
     }
 }
