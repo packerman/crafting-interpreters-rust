@@ -73,7 +73,9 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> Option<Box<Stmt>> {
-        if self.match_single(&TokenKind::If) {
+        if self.match_single(&TokenKind::For) {
+            self.for_statement()
+        } else if self.match_single(&TokenKind::If) {
             self.if_statement()
         } else if self.match_single(&TokenKind::Print) {
             self.print_statement()
@@ -84,6 +86,47 @@ impl<'a> Parser<'a> {
         } else {
             self.expression_statement()
         }
+    }
+
+    fn for_statement(&mut self) -> Option<Box<Stmt>> {
+        self.consume(&TokenKind::LeftParen, || "Expect '(' after 'for'.".into())?;
+        let initializer = if self.match_single(&TokenKind::Semicolon) {
+            None
+        } else if self.match_single(&TokenKind::Var) {
+            Some(self.var_declaration()?)
+        } else {
+            Some(self.expression_statement()?)
+        };
+        let condition = if self.match_single(&TokenKind::Semicolon) {
+            Box::new(Expr::from(true))
+        } else {
+            self.expression()?
+        };
+        self.consume(&TokenKind::Semicolon, || {
+            "Expect ';' after loop condition.".into()
+        })?;
+        let increment = if self.match_single(&TokenKind::RightParen) {
+            None
+        } else {
+            Some(self.expression()?)
+        };
+        self.consume(&TokenKind::RightParen, || {
+            "Expect ')' after for clauses.".into()
+        })?;
+
+        let mut body = self.statement()?;
+        if let Some(increment) = increment {
+            body = Box::new(Stmt::Block(Box::new([
+                body,
+                Box::new(Stmt::Expr(increment)),
+            ])));
+        }
+        body = Box::new(Stmt::While(condition, body));
+        if let Some(initializer) = initializer {
+            body = Box::new(Stmt::Block(Box::new([initializer, body])));
+        }
+
+        Some(body)
     }
 
     fn if_statement(&mut self) -> Option<Box<Stmt>> {
