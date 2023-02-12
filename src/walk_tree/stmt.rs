@@ -3,9 +3,11 @@ use crate::walk_tree::expr::Expr;
 use super::token::Token;
 
 pub enum Stmt {
-    Block(Vec<Stmt>),
+    Block(Box<[Box<Stmt>]>),
     Expr(Box<Expr>),
+    If(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>),
     Print(Box<Expr>),
+    While(Box<Expr>, Box<Stmt>),
     VarDeclaration(Token, Option<Box<Expr>>),
 }
 

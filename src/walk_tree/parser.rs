@@ -44,19 +44,19 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> Option<Vec<Stmt>> {
+    pub fn parse(&mut self) -> Option<Box<[Box<Stmt>]>> {
         let mut statements = Vec::new();
         while !self.is_at_end() {
             statements.push(self.declaration()?)
         }
-        Some(statements)
+        Some(Box::from(statements))
     }
 
     pub fn expression(&mut self) -> Option<Box<Expr>> {
         self.assigment()
     }
 
-    fn declaration(&mut self) -> Option<Stmt> {
+    fn declaration(&mut self) -> Option<Box<Stmt>> {
         let result = self.try_declaration();
         if matches!(result, None) {
             self.synchronize();
@@ -64,7 +64,7 @@ impl<'a> Parser<'a> {
         result
     }
 
-    fn try_declaration(&mut self) -> Option<Stmt> {
+    fn try_declaration(&mut self) -> Option<Box<Stmt>> {
         if self.match_single(&TokenKind::Var) {
             self.var_declaration()
         } else {
@@ -72,9 +72,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn statement(&mut self) -> Option<Stmt> {
-        if self.match_single(&TokenKind::Print) {
+    fn statement(&mut self) -> Option<Box<Stmt>> {
+        if self.match_single(&TokenKind::For) {
+            self.for_statement()
+        } else if self.match_single(&TokenKind::If) {
+            self.if_statement()
+        } else if self.match_single(&TokenKind::Print) {
             self.print_statement()
+        } else if self.match_single(&TokenKind::While) {
+            self.while_statement()
         } else if self.match_single(&TokenKind::LeftBrace) {
             self.block()
         } else {
@@ -82,15 +88,74 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn print_statement(&mut self) -> Option<Stmt> {
-        let value = self.expression()?;
-        self.consume(&TokenKind::Semicolon, || "Expect ';' after value.".into())?;
-        Some(Stmt::Print(value))
+    fn for_statement(&mut self) -> Option<Box<Stmt>> {
+        self.consume(&TokenKind::LeftParen, || "Expect '(' after 'for'.".into())?;
+        let initializer = if self.match_single(&TokenKind::Semicolon) {
+            None
+        } else if self.match_single(&TokenKind::Var) {
+            Some(self.var_declaration()?)
+        } else {
+            Some(self.expression_statement()?)
+        };
+        let condition = if self.match_single(&TokenKind::Semicolon) {
+            Box::new(Expr::from(true))
+        } else {
+            self.expression()?
+        };
+        self.consume(&TokenKind::Semicolon, || {
+            "Expect ';' after loop condition.".into()
+        })?;
+        let increment = if self.match_single(&TokenKind::RightParen) {
+            None
+        } else {
+            Some(self.expression()?)
+        };
+        self.consume(&TokenKind::RightParen, || {
+            "Expect ')' after for clauses.".into()
+        })?;
+
+        let mut body = self.statement()?;
+        if let Some(increment) = increment {
+            body = Box::new(Stmt::Block(Box::new([
+                body,
+                Box::new(Stmt::Expr(increment)),
+            ])));
+        }
+        body = Box::new(Stmt::While(condition, body));
+        if let Some(initializer) = initializer {
+            body = Box::new(Stmt::Block(Box::new([initializer, body])));
+        }
+
+        Some(body)
     }
 
-    fn var_declaration(&mut self) -> Option<Stmt> {
+    fn if_statement(&mut self) -> Option<Box<Stmt>> {
+        self.consume(&TokenKind::LeftParen, || "Expect '(' after 'if'.".into())?;
+        let condition = self.expression()?;
+        self.consume(&TokenKind::RightParen, || {
+            "Expect ')' after if condition.".into()
+        })?;
+
+        let then_branch = self.statement()?;
+        let else_branch = if self.match_single(&TokenKind::Else) {
+            Some(self.statement()?)
+        } else {
+            None
+        };
+        Some(Box::new(Stmt::If(condition, then_branch, else_branch)))
+    }
+
+    fn print_statement(&mut self) -> Option<Box<Stmt>> {
+        let value = self.expression()?;
+        self.consume(&TokenKind::Semicolon, || "Expect ';' after value.".into())?;
+        Some(Box::new(Stmt::Print(value)))
+    }
+
+    fn var_declaration(&mut self) -> Option<Box<Stmt>> {
         let name = self
-            .consume(&TokenKind::Identifier, || "Expect variable name.".to_string())?
+            .consume(&TokenKind::Identifier, || {
+                "Expect variable name.".to_string()
+            })?
             .to_owned();
         let initializer = if self.match_single(&TokenKind::Equal) {
             self.expression()
@@ -100,28 +165,39 @@ impl<'a> Parser<'a> {
         self.consume(&TokenKind::Semicolon, || {
             "Expect ';' after variable declaration.".to_string()
         })?;
-        Some(Stmt::VarDeclaration(name, initializer))
+        Some(Box::new(Stmt::VarDeclaration(name, initializer)))
     }
 
-    fn expression_statement(&mut self) -> Option<Stmt> {
+    fn while_statement(&mut self) -> Option<Box<Stmt>> {
+        self.consume(&TokenKind::LeftParen, || "Expect '(' after 'while'.".into())?;
+        let condition = self.expression()?;
+        self.consume(&TokenKind::RightParen, || {
+            "Expect ')' after condition.".into()
+        })?;
+        let body = self.statement()?;
+        Some(Box::new(Stmt::While(condition, body)))
+    }
+
+    fn expression_statement(&mut self) -> Option<Box<Stmt>> {
         let expr = self.expression()?;
         self.consume(&TokenKind::Semicolon, || {
             "Expect ';' after expression.".into()
         })?;
-        Some(Stmt::Expr(expr))
+        Some(Box::new(Stmt::Expr(expr)))
     }
 
-    fn block(&mut self) -> Option<Stmt> {
-        self.stmt_vec().map(Stmt::Block)
+    fn block(&mut self) -> Option<Box<Stmt>> {
+        let stmts = self.stmt_vec()?;
+        Some(Box::new(Stmt::Block(stmts)))
     }
 
-    fn stmt_vec(&mut self) -> Option<Vec<Stmt>> {
+    fn stmt_vec(&mut self) -> Option<Box<[Box<Stmt>]>> {
         let mut statements = Vec::new();
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             statements.push(self.declaration()?);
         }
         self.consume(&TokenKind::RightBrace, || "Expect '}' after block.".into());
-        Some(statements)
+        Some(Box::from(statements))
     }
 
     fn assigment(&mut self) -> Option<Box<Expr>> {
@@ -140,7 +216,7 @@ impl<'a> Parser<'a> {
     }
 
     fn ternary(&mut self) -> Option<Box<Expr>> {
-        let expr = self.equality()?;
+        let expr = self.or()?;
         if self.match_single(&TokenKind::QuestionMark) {
             let then_expr = self.expression()?;
             self.consume(&TokenKind::Colon, || "Expect ':'.".into());
@@ -149,6 +225,28 @@ impl<'a> Parser<'a> {
         } else {
             Some(expr)
         }
+    }
+
+    fn or(&mut self) -> Option<Box<Expr>> {
+        self.logical(&TokenKind::Or, Self::and)
+    }
+
+    fn and(&mut self) -> Option<Box<Expr>> {
+        self.logical(&TokenKind::And, Self::equality)
+    }
+
+    fn logical<F>(&mut self, token_kind: &TokenKind, mut operand: F) -> Option<Box<Expr>>
+    where
+        F: FnMut(&mut Self) -> Option<Box<Expr>>,
+    {
+        let mut expr = operand(self)?;
+
+        while self.match_single(token_kind) {
+            let operator = self.previous().to_owned();
+            let right = operand(self)?;
+            expr = Box::new(Expr::Logical(expr, operator, right));
+        }
+        Some(expr)
     }
 
     fn equality(&mut self) -> Option<Box<Expr>> {

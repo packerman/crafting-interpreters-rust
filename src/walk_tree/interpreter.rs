@@ -32,7 +32,7 @@ where
         }
     }
 
-    pub fn interpret(&mut self, statements: &[Stmt]) {
+    pub fn interpret(&mut self, statements: &[Box<Stmt>]) {
         let env = Arc::clone(&self.global_environment);
         for statement in statements {
             if let Err(error) = self.execute(statement, &env) {
@@ -52,6 +52,9 @@ where
             Expr::Grouping(expr) => self.evaluate(expr, env),
             Expr::Unary(operator, operand) => self.evaluate_unary(operator, operand, env),
             Expr::Binary(left, operator, right) => self.evaluate_binary(left, operator, right, env),
+            Expr::Logical(left, operator, right) => {
+                self.evaluate_logical(left, operator, right, env)
+            }
             Expr::Ternary(condition, then_expr, else_expr) => {
                 self.evaluate_ternary(condition, then_expr, else_expr, env)
             }
@@ -79,7 +82,11 @@ where
         match stmt {
             Stmt::Block(stmts) => self.execute_block_stmt(stmts, env),
             Stmt::Expr(expr) => self.execute_expression_stmt(expr, env),
+            Stmt::If(condition, then_branch, else_branch) => {
+                self.execute_if_stmt(condition, then_branch, else_branch.as_deref(), env)
+            }
             Stmt::Print(expr) => self.execute_print_stmt(expr, env),
+            Stmt::While(condition, body) => self.execute_while_stmt(condition, body, env),
             Stmt::VarDeclaration(name, initializer) => {
                 self.execute_var_stmt(name, initializer.as_deref(), env)
             }
@@ -88,7 +95,7 @@ where
 
     fn execute_block_stmt(
         &mut self,
-        statements: &[Stmt],
+        statements: &[Box<Stmt>],
         env: &Arc<RefCell<Environment>>,
     ) -> Result<(), RuntimeError> {
         let environment = Environment::new_with_enclosing(Arc::clone(env));
@@ -104,6 +111,21 @@ where
         env: &Arc<RefCell<Environment>>,
     ) -> Result<(), RuntimeError> {
         self.evaluate(expr, env)?;
+        Ok(())
+    }
+
+    fn execute_if_stmt(
+        &mut self,
+        condition: &Expr,
+        then_branch: &Stmt,
+        else_branch: Option<&Stmt>,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<(), RuntimeError> {
+        if self.evaluate(condition, env)?.is_truthy() {
+            self.execute(then_branch, env)?
+        } else if let Some(else_branch) = else_branch {
+            self.execute(else_branch, env)?
+        }
         Ok(())
     }
 
@@ -129,6 +151,18 @@ where
             Cell::from(())
         };
         env.borrow_mut().define(name, value);
+        Ok(())
+    }
+
+    fn execute_while_stmt(
+        &mut self,
+        condition: &Expr,
+        body: &Stmt,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<(), RuntimeError> {
+        while self.evaluate(condition, env)?.is_truthy() {
+            self.execute(body, env)?
+        }
         Ok(())
     }
 
@@ -223,6 +257,24 @@ where
             TokenKind::EqualEqual => Ok(Cell::from(left == right)),
             _ => unreachable!(),
         }
+    }
+
+    fn evaluate_logical(
+        &mut self,
+        left: &Expr,
+        operator: &Token,
+        right: &Expr,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
+        let left = self.evaluate(left, env)?;
+        if operator.kind == TokenKind::Or {
+            if left.is_truthy() {
+                return Ok(left);
+            }
+        } else if operator.kind == TokenKind::And && !left.is_truthy() {
+            return Ok(left);
+        }
+        self.evaluate(right, env)
     }
 
     fn evaluate_ternary(
@@ -372,6 +424,125 @@ mod tests {
         );
     }
 
+    #[test]
+    fn logical_or_works() {
+        assert_prints(
+            r#"
+            print "hi" or 2;
+            print nil or "yes";
+            print nil or false or 5 or 6;
+        "#,
+            b"hi\nyes\n5\n",
+        )
+    }
+
+    #[test]
+    fn logical_and_works() {
+        assert_prints(
+            r#"
+            print "hi" and 2;
+            print nil and "yes";
+            print false and nil and 5 and 6;
+            print 3 and 4 and 5 and 6;
+        "#,
+            b"2\nnil\nfalse\n6\n",
+        )
+    }
+
+    #[test]
+    fn if_stmt_works() {
+        assert_prints(
+            r#"
+            if (true) {
+                print "yes";
+            } else {
+                print "no";
+            }
+            if (0) {
+                print "yes";
+            } else {
+                print "no";
+            }
+            if (nil) {
+                print "yes";
+            } else {
+                print "no";
+            }
+            if (false) {
+                print "yes";
+            } else {
+                print "no";
+            }
+        "#,
+            b"yes\nyes\nno\nno\n",
+        )
+    }
+
+    #[test]
+    fn nested_if_stmt_works() {
+        assert_prints(
+            r#"
+            if (true)
+                if (true)
+                    print "thenTrueTrue";
+                else
+                    print "elseTrueTrue";
+            
+            if (true)
+                if (false)
+                    print "thenTrueFalse";
+                else
+                    print "elseTrueFalse";
+
+            if (false)
+                if (true)
+                    print "thenFalseTrue";
+                else
+                    print "elseFalseTrue";
+
+            if (false)
+                if (false)
+                    print "thenFalseFalse";
+                else
+                    print "elseFalseFalse";
+        "#,
+            b"thenTrueTrue\nelseTrueFalse\n",
+        )
+    }
+
+    #[test]
+    fn while_stmt_works() {
+        assert_prints(
+            r#"
+            var n = 5;
+            var f = 1;
+            while (n > 0) {
+                f = f * n;
+                n = n - 1;
+            }
+            print f;
+        "#,
+            b"120\n",
+        );
+    }
+
+    #[test]
+    fn for_stmt_works() {
+        assert_prints(
+            r#"
+            var a = 0;
+            var temp;
+
+            for (var b = 1; a < 10000; b = temp + b) {
+                print a;
+                temp = a;
+                a = b;
+            }
+        "#,
+            b"0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n55\n89\n144\n233\n377\n610\n987\n1597\n2584\n4181\n6765\n",
+        );
+    }
+
     fn assert_evaluates_to<T>(source: &str, value: T)
     where
         Cell: From<T>,
@@ -403,7 +574,7 @@ mod tests {
             .context("Evaluating error")
     }
 
-    fn test_parse(source: &str, error_reporter: &ErrorReporter) -> Option<Vec<Stmt>> {
+    fn test_parse(source: &str, error_reporter: &ErrorReporter) -> Option<Box<[Box<Stmt>]>> {
         let scanner = Scanner::new(error_reporter);
         let tokens: Vec<_> = scanner.scan_tokens(source).collect();
         let mut parser = Parser::new(tokens, error_reporter);
