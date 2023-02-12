@@ -13,6 +13,7 @@ pub enum Expr {
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
     Variable(Token),
     Assignment(Token, Box<Expr>),
+    Logical(Box<Expr>, Token, Box<Expr>),
 }
 
 impl From<bool> for Expr {

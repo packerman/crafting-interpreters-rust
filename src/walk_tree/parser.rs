@@ -73,13 +73,31 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> Option<Stmt> {
-        if self.match_single(&TokenKind::Print) {
+        if self.match_single(&TokenKind::If) {
+            self.if_statement()
+        } else if self.match_single(&TokenKind::Print) {
             self.print_statement()
         } else if self.match_single(&TokenKind::LeftBrace) {
             self.block()
         } else {
             self.expression_statement()
         }
+    }
+
+    fn if_statement(&mut self) -> Option<Stmt> {
+        self.consume(&TokenKind::LeftParen, || "Expect '(' after 'if'.".into())?;
+        let condition = self.expression()?;
+        self.consume(&TokenKind::RightParen, || {
+            "Expect ')' after if condition.".into()
+        })?;
+
+        let then_branch = Box::new(self.statement()?);
+        let else_branch = if self.match_single(&TokenKind::Else) {
+            Some(Box::new(self.statement()?))
+        } else {
+            None
+        };
+        Some(Stmt::If(condition, then_branch, else_branch))
     }
 
     fn print_statement(&mut self) -> Option<Stmt> {
@@ -90,7 +108,9 @@ impl<'a> Parser<'a> {
 
     fn var_declaration(&mut self) -> Option<Stmt> {
         let name = self
-            .consume(&TokenKind::Identifier, || "Expect variable name.".to_string())?
+            .consume(&TokenKind::Identifier, || {
+                "Expect variable name.".to_string()
+            })?
             .to_owned();
         let initializer = if self.match_single(&TokenKind::Equal) {
             self.expression()
@@ -140,7 +160,7 @@ impl<'a> Parser<'a> {
     }
 
     fn ternary(&mut self) -> Option<Box<Expr>> {
-        let expr = self.equality()?;
+        let expr = self.or()?;
         if self.match_single(&TokenKind::QuestionMark) {
             let then_expr = self.expression()?;
             self.consume(&TokenKind::Colon, || "Expect ':'.".into());
@@ -149,6 +169,28 @@ impl<'a> Parser<'a> {
         } else {
             Some(expr)
         }
+    }
+
+    fn or(&mut self) -> Option<Box<Expr>> {
+        self.logical(&TokenKind::Or, Self::and)
+    }
+
+    fn and(&mut self) -> Option<Box<Expr>> {
+        self.logical(&TokenKind::And, Self::equality)
+    }
+
+    fn logical<F>(&mut self, token_kind: &TokenKind, mut operand: F) -> Option<Box<Expr>>
+    where
+        F: FnMut(&mut Self) -> Option<Box<Expr>>,
+    {
+        let mut expr = operand(self)?;
+
+        while self.match_single(token_kind) {
+            let operator = self.previous().to_owned();
+            let right = operand(self)?;
+            expr = Box::new(Expr::Logical(expr, operator, right));
+        }
+        Some(expr)
     }
 
     fn equality(&mut self) -> Option<Box<Expr>> {

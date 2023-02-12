@@ -52,6 +52,9 @@ where
             Expr::Grouping(expr) => self.evaluate(expr, env),
             Expr::Unary(operator, operand) => self.evaluate_unary(operator, operand, env),
             Expr::Binary(left, operator, right) => self.evaluate_binary(left, operator, right, env),
+            Expr::Logical(left, operator, right) => {
+                self.evaluate_logical(left, operator, right, env)
+            }
             Expr::Ternary(condition, then_expr, else_expr) => {
                 self.evaluate_ternary(condition, then_expr, else_expr, env)
             }
@@ -79,6 +82,9 @@ where
         match stmt {
             Stmt::Block(stmts) => self.execute_block_stmt(stmts, env),
             Stmt::Expr(expr) => self.execute_expression_stmt(expr, env),
+            Stmt::If(condition, then_branch, else_branch) => {
+                self.execute_if_stmt(condition, then_branch, else_branch.as_deref(), env)
+            }
             Stmt::Print(expr) => self.execute_print_stmt(expr, env),
             Stmt::VarDeclaration(name, initializer) => {
                 self.execute_var_stmt(name, initializer.as_deref(), env)
@@ -104,6 +110,21 @@ where
         env: &Arc<RefCell<Environment>>,
     ) -> Result<(), RuntimeError> {
         self.evaluate(expr, env)?;
+        Ok(())
+    }
+
+    fn execute_if_stmt(
+        &mut self,
+        condition: &Expr,
+        then_branch: &Stmt,
+        else_branch: Option<&Stmt>,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<(), RuntimeError> {
+        if self.evaluate(condition, env)?.is_truthy() {
+            self.execute(then_branch, env)?
+        } else if let Some(else_branch) = else_branch {
+            self.execute(else_branch, env)?
+        }
         Ok(())
     }
 
@@ -223,6 +244,26 @@ where
             TokenKind::EqualEqual => Ok(Cell::from(left == right)),
             _ => unreachable!(),
         }
+    }
+
+    fn evaluate_logical(
+        &mut self,
+        left: &Expr,
+        operator: &Token,
+        right: &Expr,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
+        let left = self.evaluate(left, env)?;
+        if operator.kind == TokenKind::Or {
+            if left.is_truthy() {
+                return Ok(left);
+            }
+        } else if operator.kind == TokenKind::And {
+            if !left.is_truthy() {
+                return Ok(left);
+            }
+        }
+        self.evaluate(right, env)
     }
 
     fn evaluate_ternary(
@@ -370,6 +411,92 @@ mod tests {
         "#,
             b"inner a\nouter b\nglobal c\nouter a\nouter b\nglobal c\nglobal a\nglobal b\nglobal c\n",
         );
+    }
+
+    #[test]
+    fn logical_or_works() {
+        assert_prints(
+            r#"
+            print "hi" or 2;
+            print nil or "yes";
+            print nil or false or 5 or 6;
+        "#,
+            b"hi\nyes\n5\n",
+        )
+    }
+
+    #[test]
+    fn logical_and_works() {
+        assert_prints(
+            r#"
+            print "hi" and 2;
+            print nil and "yes";
+            print false and nil and 5 and 6;
+            print 3 and 4 and 5 and 6;
+        "#,
+            b"2\nnil\nfalse\n6\n",
+        )
+    }
+
+    #[test]
+    fn if_stmt_works() {
+        assert_prints(
+            r#"
+            if (true) {
+                print "yes";
+            } else {
+                print "no";
+            }
+            if (0) {
+                print "yes";
+            } else {
+                print "no";
+            }
+            if (nil) {
+                print "yes";
+            } else {
+                print "no";
+            }
+            if (false) {
+                print "yes";
+            } else {
+                print "no";
+            }
+        "#,
+            b"yes\nyes\nno\nno\n",
+        )
+    }
+
+    #[test]
+    fn nested_if_stmt_works() {
+        assert_prints(
+            r#"
+            if (true)
+                if (true)
+                    print "thenTrueTrue";
+                else
+                    print "elseTrueTrue";
+            
+            if (true)
+                if (false)
+                    print "thenTrueFalse";
+                else
+                    print "elseTrueFalse";
+
+            if (false)
+                if (true)
+                    print "thenFalseTrue";
+                else
+                    print "elseFalseTrue";
+
+            if (false)
+                if (false)
+                    print "thenFalseFalse";
+                else
+                    print "elseFalseFalse";
+        "#,
+            b"thenTrueTrue\nelseTrueFalse\n",
+        )
     }
 
     fn assert_evaluates_to<T>(source: &str, value: T)
