@@ -1,6 +1,10 @@
 use std::{fmt::Display, sync::Arc};
 
-use super::{callable::Callable, error::RuntimeError, token::Token};
+use super::{
+    callable::{self, Callable},
+    error::RuntimeError,
+    token::Token,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cell(Option<Arc<Value>>);
@@ -19,7 +23,9 @@ impl PartialEq for Value {
             (Self::Boolean(left), Self::Boolean(right)) => left == right,
             (Self::Number(left), Self::Number(right)) => left == right,
             (Self::String(left), Self::String(right)) => left == right,
-            (Self::Callable(left), Self::Callable(right)) => Arc::ptr_eq(left, right),
+            (Self::Callable(left), Self::Callable(right)) => {
+                callable::ptr_eq(left.as_ref(), right.as_ref())
+            }
             _ => false,
         }
     }
@@ -118,7 +124,7 @@ impl Display for Cell {
             None => write!(f, "nil"),
             Some(Value::Number(value)) => write!(f, "{value}"),
             Some(Value::String(value)) => write!(f, "{value}"),
-            Some(Value::Callable(value)) => write!(f, "<function@{:p}>", value),
+            Some(Value::Callable(value)) => write!(f, "<function@{value:p}>"),
         }
     }
 }
