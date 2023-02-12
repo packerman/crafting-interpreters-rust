@@ -32,7 +32,7 @@ where
         }
     }
 
-    pub fn interpret(&mut self, statements: &[Stmt]) {
+    pub fn interpret(&mut self, statements: &[Box<Stmt>]) {
         let env = Arc::clone(&self.global_environment);
         for statement in statements {
             if let Err(error) = self.execute(statement, &env) {
@@ -95,7 +95,7 @@ where
 
     fn execute_block_stmt(
         &mut self,
-        statements: &[Stmt],
+        statements: &[Box<Stmt>],
         env: &Arc<RefCell<Environment>>,
     ) -> Result<(), RuntimeError> {
         let environment = Environment::new_with_enclosing(Arc::clone(env));
@@ -557,7 +557,7 @@ mod tests {
             .context("Evaluating error")
     }
 
-    fn test_parse(source: &str, error_reporter: &ErrorReporter) -> Option<Vec<Stmt>> {
+    fn test_parse(source: &str, error_reporter: &ErrorReporter) -> Option<Box<[Box<Stmt>]>> {
         let scanner = Scanner::new(error_reporter);
         let tokens: Vec<_> = scanner.scan_tokens(source).collect();
         let mut parser = Parser::new(tokens, error_reporter);
