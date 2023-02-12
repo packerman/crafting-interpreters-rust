@@ -1,5 +1,11 @@
-use super::{interpreter::Interpreter, value::Cell};
+use std::fmt::Debug;
 
-pub trait Callable<'a, W> {
-    fn call(&self, interpreter: &Interpreter<'a, W>, arguments: &[Cell]) -> Cell;
+use super::{error::RuntimeError, value::Cell};
+
+pub trait Context {}
+
+pub trait Callable: Debug {
+    fn arity(&self) -> usize;
+
+    fn call(&self, context: &mut dyn Context, arguments: &[Cell]) -> Result<Cell, RuntimeError>;
 }

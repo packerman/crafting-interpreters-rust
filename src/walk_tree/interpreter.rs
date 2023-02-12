@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crate::walk_tree::error::RuntimeError;
 use crate::walk_tree::stmt::Stmt;
 
+use super::callable::{Callable, Context};
 use super::environment::Environment;
 use super::{
     error::ErrorReporter,
@@ -17,7 +18,7 @@ use super::{
 pub struct Interpreter<'a, W> {
     error_reporter: &'a ErrorReporter,
     output: W,
-    global_environment: Arc<RefCell<Environment>>,
+    globals: Arc<RefCell<Environment>>,
 }
 
 impl<'a, W> Interpreter<'a, W>
@@ -28,12 +29,12 @@ where
         Self {
             error_reporter,
             output,
-            global_environment: Environment::new(),
+            globals: Environment::new(),
         }
     }
 
     pub fn interpret(&mut self, statements: &[Box<Stmt>]) {
-        let env = Arc::clone(&self.global_environment);
+        let env = Arc::clone(&self.globals);
         for statement in statements {
             if let Err(error) = self.execute(statement, &env) {
                 self.error_reporter.runtime_error(&error);
@@ -52,7 +53,9 @@ where
             Expr::Grouping(expr) => self.evaluate(expr, env),
             Expr::Unary(operator, operand) => self.evaluate_unary(operator, operand, env),
             Expr::Binary(left, operator, right) => self.evaluate_binary(left, operator, right, env),
-            Expr::Call(callee, token, arguments) => self.evaluate_call(callee, arguments, env),
+            Expr::Call(callee, paren, arguments) => {
+                self.evaluate_call(callee, paren, arguments, env)
+            }
             Expr::Logical(left, operator, right) => {
                 self.evaluate_logical(left, operator, right, env)
             }
@@ -65,7 +68,7 @@ where
     }
 
     pub fn evaluate_and_print(&mut self, expr: &Expr) -> Result<Cell> {
-        let result = self.evaluate(expr, &Arc::clone(&self.global_environment));
+        let result = self.evaluate(expr, &Arc::clone(&self.globals));
         match &result {
             Ok(result) => {
                 writeln!(self.output, "{result}")?;
@@ -263,17 +266,39 @@ where
     fn evaluate_call(
         &mut self,
         callee: &Expr,
+        paren: &Token,
         arguments: &[Box<Expr>],
         env: &Arc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
         let callee = self.evaluate(callee, env)?;
 
-        let mut actual_arguments = Vec::with_capacity(arguments.len());
-        for argument in arguments {
-            actual_arguments.push(self.evaluate(argument, env)?);
-        }
+        let arguments = self.evaluate_vec(arguments, env)?;
 
-        todo!()
+        let function = <Arc<dyn Callable>>::try_from(callee)?;
+        if arguments.len() != function.arity() {
+            Err(RuntimeError::new(
+                paren.to_owned(),
+                &format!(
+                    "Expected {} arguments but got {}.",
+                    function.arity(),
+                    arguments.len()
+                ),
+            ))
+        } else {
+            function.call(self, &arguments)
+        }
+    }
+
+    fn evaluate_vec(
+        &mut self,
+        exprs: &[Box<Expr>],
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<Vec<Cell>, RuntimeError> {
+        let mut result = Vec::with_capacity(exprs.len());
+        for expr in exprs {
+            result.push(self.evaluate(expr, env)?);
+        }
+        Ok(result)
     }
 
     fn evaluate_logical(
@@ -336,6 +361,8 @@ where
         }
     }
 }
+
+impl<'a, W> Context for Interpreter<'a, W> {}
 
 #[cfg(test)]
 mod tests {

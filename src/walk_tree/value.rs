@@ -5,11 +5,24 @@ use super::{callable::Callable, error::RuntimeError, token::Token};
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cell(Option<Arc<Value>>);
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Boolean(bool),
     Number(f64),
     String(Arc<str>),
+    Callable(Arc<dyn Callable>),
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Boolean(left), Self::Boolean(right)) => left == right,
+            (Self::Number(left), Self::Number(right)) => left == right,
+            (Self::String(left), Self::String(right)) => left == right,
+            (Self::Callable(left), Self::Callable(right)) => Arc::ptr_eq(left, right),
+            _ => false,
+        }
+    }
 }
 
 impl From<Value> for Cell {
@@ -78,6 +91,20 @@ impl From<()> for Cell {
     }
 }
 
+impl TryFrom<Cell> for Arc<dyn Callable> {
+    type Error = RuntimeError;
+
+    fn try_from(value: Cell) -> Result<Self, Self::Error> {
+        if let Some(Value::Callable(value)) = value.0.as_deref() {
+            Ok(Arc::clone(value))
+        } else {
+            Err(RuntimeError::from(String::from(
+                "Can only call functions and classes.",
+            )))
+        }
+    }
+}
+
 impl Display for Cell {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.0.as_deref() {
@@ -85,6 +112,7 @@ impl Display for Cell {
             None => write!(f, "nil"),
             Some(Value::Number(value)) => write!(f, "{value}"),
             Some(Value::String(value)) => write!(f, "{value}"),
+            Some(Value::Callable(value)) => write!(f, "<function@{:p}>", value),
         }
     }
 }
