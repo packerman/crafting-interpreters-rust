@@ -91,6 +91,12 @@ impl From<()> for Cell {
     }
 }
 
+impl From<Arc<dyn Callable>> for Cell {
+    fn from(value: Arc<dyn Callable>) -> Self {
+        Cell::from(Value::Callable(value))
+    }
+}
+
 impl TryFrom<Cell> for Arc<dyn Callable> {
     type Error = RuntimeError;
 

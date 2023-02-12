@@ -8,6 +8,7 @@ use crate::walk_tree::stmt::Stmt;
 
 use super::callable::{Callable, Context};
 use super::environment::Environment;
+use super::native;
 use super::{
     error::ErrorReporter,
     expr::Expr,
@@ -26,11 +27,19 @@ where
     W: Write,
 {
     pub fn new_with_output(error_reporter: &'a ErrorReporter, output: W) -> Self {
+        let globals = Environment::new();
+        Self::define_native_functions(&globals);
         Self {
             error_reporter,
             output,
-            globals: Environment::new(),
+            globals,
         }
+    }
+
+    fn define_native_functions(globals: &Arc<RefCell<Environment>>) {
+        globals
+            .borrow_mut()
+            .define(Arc::from("clock"), native::clock());
     }
 
     pub fn interpret(&mut self, statements: &[Box<Stmt>]) {
@@ -154,7 +163,7 @@ where
         } else {
             Cell::from(())
         };
-        env.borrow_mut().define(name, value);
+        env.borrow_mut().define(name.lexeme(), value);
         Ok(())
     }
 
@@ -220,8 +229,8 @@ where
                 if left.is_number() && right.is_number() {
                     value::binary_operation(|a: f64, b: f64| a + b, left, operator, right)
                 } else if left.is_string() && right.is_string() {
-                    value::binary_operation(
-                        |a: String, b: Arc<str>| Arc::from(a + &b),
+                    value::binary_operation::<String, Arc<str>, Arc<str>>(
+                        |a, b| Arc::from(a + &b),
                         left,
                         operator,
                         right,
@@ -408,7 +417,7 @@ mod tests {
 
     #[test]
     fn concat_string_works() {
-        assert_evaluates_to(r#""ala" + " ma " + "kota";"#, Arc::from("ala ma kota"));
+        assert_evaluates_to::<Arc<str>>(r#""ala" + " ma " + "kota";"#, Arc::from("ala ma kota"));
     }
 
     #[test]

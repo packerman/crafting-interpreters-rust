@@ -5,6 +5,7 @@ pub mod exit_code;
 pub mod expr;
 pub mod interpreter;
 pub mod lox;
+pub mod native;
 pub mod parser;
 pub mod scanner;
 pub mod stmt;

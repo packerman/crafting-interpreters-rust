@@ -23,8 +23,8 @@ impl Environment {
         }))
     }
 
-    pub fn define(&mut self, name: &Token, value: Cell) {
-        self.values.insert(name.lexeme.to_owned(), value);
+    pub fn define(&mut self, name: Arc<str>, value: Cell) {
+        self.values.insert(name, value);
     }
 
     pub fn get(&self, name: &Token) -> Result<Cell, RuntimeError> {
