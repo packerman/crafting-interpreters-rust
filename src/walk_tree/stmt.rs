@@ -5,9 +5,10 @@ use super::token::Token;
 pub enum Stmt {
     Block(Vec<Stmt>),
     Expr(Box<Expr>),
-    Print(Box<Expr>),
-    VarDeclaration(Token, Option<Box<Expr>>),
     If(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>),
+    Print(Box<Expr>),
+    While(Box<Expr>, Box<Stmt>),
+    VarDeclaration(Token, Option<Box<Expr>>),
 }
 
 impl Stmt {

@@ -86,6 +86,7 @@ where
                 self.execute_if_stmt(condition, then_branch, else_branch.as_deref(), env)
             }
             Stmt::Print(expr) => self.execute_print_stmt(expr, env),
+            Stmt::While(condition, body) => self.execute_while_stmt(condition, body, env),
             Stmt::VarDeclaration(name, initializer) => {
                 self.execute_var_stmt(name, initializer.as_deref(), env)
             }
@@ -150,6 +151,18 @@ where
             Cell::from(())
         };
         env.borrow_mut().define(name, value);
+        Ok(())
+    }
+
+    fn execute_while_stmt(
+        &mut self,
+        condition: &Expr,
+        body: &Stmt,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<(), RuntimeError> {
+        while self.evaluate(condition, env)?.is_truthy() {
+            self.execute(body, env)?
+        }
         Ok(())
     }
 
@@ -495,6 +508,22 @@ mod tests {
         "#,
             b"thenTrueTrue\nelseTrueFalse\n",
         )
+    }
+
+    #[test]
+    fn while_stmt_works() {
+        assert_prints(
+            r#"
+            var n = 5;
+            var f = 1;
+            while (n > 0) {
+                f = f * n;
+                n = n - 1;
+            }
+            print f;
+        "#,
+            b"120\n",
+        );
     }
 
     fn assert_evaluates_to<T>(source: &str, value: T)

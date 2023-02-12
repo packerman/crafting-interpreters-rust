@@ -77,6 +77,8 @@ impl<'a> Parser<'a> {
             self.if_statement()
         } else if self.match_single(&TokenKind::Print) {
             self.print_statement()
+        } else if self.match_single(&TokenKind::While) {
+            self.while_statement()
         } else if self.match_single(&TokenKind::LeftBrace) {
             self.block()
         } else {
@@ -121,6 +123,16 @@ impl<'a> Parser<'a> {
             "Expect ';' after variable declaration.".to_string()
         })?;
         Some(Stmt::VarDeclaration(name, initializer))
+    }
+
+    fn while_statement(&mut self) -> Option<Stmt> {
+        self.consume(&TokenKind::LeftParen, || "Expect '(' after 'while'.".into())?;
+        let condition = self.expression()?;
+        self.consume(&TokenKind::RightParen, || {
+            "Expect ')' after condition.".into()
+        })?;
+        let body = Box::new(self.statement()?);
+        Some(Stmt::While(condition, body))
     }
 
     fn expression_statement(&mut self) -> Option<Stmt> {
