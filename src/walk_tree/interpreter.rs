@@ -8,6 +8,7 @@ use crate::walk_tree::stmt::Stmt;
 
 use super::callable::{Callable, Context};
 use super::environment::Environment;
+use super::function::Function;
 use super::native;
 use super::{
     error::ErrorReporter,
@@ -95,6 +96,12 @@ where
         match stmt {
             Stmt::Block(stmts) => self.execute_block_stmt(stmts, env),
             Stmt::Expr(expr) => self.execute_expression_stmt(expr, env),
+            Stmt::Function(name, parameters, body) => {
+                let function =
+                    Function::new(name.to_owned(), parameters.to_owned(), body.to_owned());
+                env.borrow_mut().define(name.lexeme(), Cell::from(function));
+                Ok(())
+            }
             Stmt::If(condition, then_branch, else_branch) => {
                 self.execute_if_stmt(condition, then_branch, else_branch.as_deref(), env)
             }
@@ -371,7 +378,22 @@ where
     }
 }
 
-impl<'a, W> Context for Interpreter<'a, W> {}
+impl<'a, W> Context for Interpreter<'a, W>
+where
+    W: Write,
+{
+    fn globals(&self) -> Arc<RefCell<Environment>> {
+        Arc::clone(&self.globals)
+    }
+
+    fn execute_block(
+        &mut self,
+        block: &[Box<Stmt>],
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<(), RuntimeError> {
+        self.execute_block_stmt(block, env)
+    }
+}
 
 #[cfg(test)]
 mod tests {

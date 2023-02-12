@@ -65,7 +65,9 @@ impl<'a> Parser<'a> {
     }
 
     fn try_declaration(&mut self) -> Option<Box<Stmt>> {
-        if self.match_single(&TokenKind::Var) {
+        if self.match_single(&TokenKind::Fun) {
+            self.function("function")
+        } else if self.match_single(&TokenKind::Var) {
             self.var_declaration()
         } else {
             self.statement()
@@ -97,18 +99,18 @@ impl<'a> Parser<'a> {
         } else {
             Some(self.expression_statement()?)
         };
-        let condition = if self.match_single(&TokenKind::Semicolon) {
-            Box::new(Expr::from(true))
-        } else {
+        let condition = if !self.check(&TokenKind::Semicolon) {
             self.expression()?
+        } else {
+            Box::new(Expr::from(true))
         };
         self.consume(&TokenKind::Semicolon, || {
             "Expect ';' after loop condition.".into()
         })?;
-        let increment = if self.match_single(&TokenKind::RightParen) {
-            None
-        } else {
+        let increment = if !self.check(&TokenKind::RightParen) {
             Some(self.expression()?)
+        } else {
+            None
         };
         self.consume(&TokenKind::RightParen, || {
             "Expect ')' after for clauses.".into()
@@ -116,14 +118,14 @@ impl<'a> Parser<'a> {
 
         let mut body = self.statement()?;
         if let Some(increment) = increment {
-            body = Box::new(Stmt::Block(Box::new([
+            body = Box::new(Stmt::Block(Arc::new([
                 body,
                 Box::new(Stmt::Expr(increment)),
             ])));
         }
         body = Box::new(Stmt::While(condition, body));
         if let Some(initializer) = initializer {
-            body = Box::new(Stmt::Block(Box::new([initializer, body])));
+            body = Box::new(Stmt::Block(Arc::new([initializer, body])));
         }
 
         Some(body)
@@ -186,18 +188,51 @@ impl<'a> Parser<'a> {
         Some(Box::new(Stmt::Expr(expr)))
     }
 
+    fn function(&mut self, kind: &str) -> Option<Box<Stmt>> {
+        let name = self
+            .consume(&TokenKind::Identifier, || format!("Expect {kind} name."))?
+            .to_owned();
+        self.consume(&TokenKind::LeftParen, || {
+            format!("Expect '(' after {kind} name.")
+        })?;
+        let mut parameters = Vec::new();
+        if !self.check(&TokenKind::RightParen) {
+            loop {
+                if parameters.len() >= 255 {
+                    self.error::<()>(self.peek(), "Can't have more than 255 parameters.");
+                }
+
+                parameters.push(
+                    self.consume(&TokenKind::Identifier, || format!("Expect parameter name."))?
+                        .to_owned(),
+                );
+                if !self.match_single(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(&TokenKind::RightParen, || {
+            format!("Expect ')' after parameters.")
+        })?;
+        self.consume(&TokenKind::LeftBrace, || {
+            format!("Expect '{{' before {kind} body.")
+        })?;
+        let body = self.stmt_vec()?;
+        Some(Box::new(Stmt::Function(name, Arc::from(parameters), body)))
+    }
+
     fn block(&mut self) -> Option<Box<Stmt>> {
         let stmts = self.stmt_vec()?;
         Some(Box::new(Stmt::Block(stmts)))
     }
 
-    fn stmt_vec(&mut self) -> Option<Box<[Box<Stmt>]>> {
+    fn stmt_vec(&mut self) -> Option<Arc<[Box<Stmt>]>> {
         let mut statements = Vec::new();
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             statements.push(self.declaration()?);
         }
         self.consume(&TokenKind::RightBrace, || "Expect '}' after block.".into());
-        Some(Box::from(statements))
+        Some(Arc::from(statements))
     }
 
     fn assigment(&mut self) -> Option<Box<Expr>> {

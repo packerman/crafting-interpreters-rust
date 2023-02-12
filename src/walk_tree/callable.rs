@@ -1,8 +1,16 @@
-use std::{fmt::Debug, ptr};
+use std::{cell::RefCell, fmt::Debug, ptr, sync::Arc};
 
-use super::{error::RuntimeError, value::Cell};
+use super::{environment::Environment, error::RuntimeError, stmt::Stmt, value::Cell};
 
-pub trait Context {}
+pub trait Context {
+    fn globals(&self) -> Arc<RefCell<Environment>>;
+
+    fn execute_block(
+        &mut self,
+        block: &[Box<Stmt>],
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<(), RuntimeError>;
+}
 
 pub trait Callable: Debug {
     fn arity(&self) -> usize;

@@ -3,6 +3,7 @@ pub mod environment;
 pub mod error;
 pub mod exit_code;
 pub mod expr;
+pub mod function;
 pub mod interpreter;
 pub mod lox;
 pub mod native;
