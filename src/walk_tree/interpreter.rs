@@ -258,10 +258,8 @@ where
             if left.is_truthy() {
                 return Ok(left);
             }
-        } else if operator.kind == TokenKind::And {
-            if !left.is_truthy() {
-                return Ok(left);
-            }
+        } else if operator.kind == TokenKind::And && !left.is_truthy() {
+            return Ok(left);
         }
         self.evaluate(right, env)
     }
