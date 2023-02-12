@@ -1,6 +1,6 @@
 use std::{fmt::Display, sync::Arc};
 
-use super::{error::RuntimeError, token::Token};
+use super::{callable::Callable, error::RuntimeError, token::Token};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cell(Option<Arc<Value>>);

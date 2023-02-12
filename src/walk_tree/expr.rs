@@ -7,6 +7,7 @@ pub type Operator = Token;
 #[derive(Debug, PartialEq)]
 pub enum Expr {
     Binary(Box<Expr>, Operator, Box<Expr>),
+    Call(Box<Expr>, Token, Box<[Box<Expr>]>),
     Unary(Operator, Box<Expr>),
     Literal(Cell),
     Grouping(Box<Expr>),

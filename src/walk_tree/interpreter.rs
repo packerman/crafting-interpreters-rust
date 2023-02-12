@@ -52,6 +52,7 @@ where
             Expr::Grouping(expr) => self.evaluate(expr, env),
             Expr::Unary(operator, operand) => self.evaluate_unary(operator, operand, env),
             Expr::Binary(left, operator, right) => self.evaluate_binary(left, operator, right, env),
+            Expr::Call(callee, token, arguments) => self.evaluate_call(callee, arguments, env),
             Expr::Logical(left, operator, right) => {
                 self.evaluate_logical(left, operator, right, env)
             }
@@ -257,6 +258,22 @@ where
             TokenKind::EqualEqual => Ok(Cell::from(left == right)),
             _ => unreachable!(),
         }
+    }
+
+    fn evaluate_call(
+        &mut self,
+        callee: &Expr,
+        arguments: &[Box<Expr>],
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
+        let callee = self.evaluate(callee, env)?;
+
+        let mut actual_arguments = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            actual_arguments.push(self.evaluate(argument, env)?);
+        }
+
+        todo!()
     }
 
     fn evaluate_logical(
