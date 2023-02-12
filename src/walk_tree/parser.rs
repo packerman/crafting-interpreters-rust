@@ -203,7 +203,7 @@ impl<'a> Parser<'a> {
                 }
 
                 parameters.push(
-                    self.consume(&TokenKind::Identifier, || format!("Expect parameter name."))?
+                    self.consume(&TokenKind::Identifier, || "Expect parameter name.".to_string())?
                         .to_owned(),
                 );
                 if !self.match_single(&TokenKind::Comma) {
@@ -212,7 +212,7 @@ impl<'a> Parser<'a> {
             }
         }
         self.consume(&TokenKind::RightParen, || {
-            format!("Expect ')' after parameters.")
+            "Expect ')' after parameters.".to_string()
         })?;
         self.consume(&TokenKind::LeftBrace, || {
             format!("Expect '{{' before {kind} body.")

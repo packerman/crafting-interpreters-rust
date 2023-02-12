@@ -98,7 +98,7 @@ where
             Stmt::Expr(expr) => self.execute_expression_stmt(expr, env),
             Stmt::Function(name, parameters, body) => {
                 let function =
-                    Function::new(name.to_owned(), parameters.to_owned(), body.to_owned());
+                    Function::init(name.to_owned(), parameters.to_owned(), body.to_owned());
                 env.borrow_mut().define(name.lexeme(), Cell::from(function));
                 Ok(())
             }

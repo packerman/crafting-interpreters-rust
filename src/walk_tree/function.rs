@@ -17,7 +17,11 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn new(name: Token, parameters: Arc<[Token]>, body: Arc<[Box<Stmt>]>) -> Arc<dyn Callable> {
+    pub fn init(
+        name: Token,
+        parameters: Arc<[Token]>,
+        body: Arc<[Box<Stmt>]>,
+    ) -> Arc<dyn Callable> {
         Arc::new(Self {
             name,
             parameters,
