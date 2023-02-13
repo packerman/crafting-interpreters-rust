@@ -648,6 +648,24 @@ mod tests {
         );
     }
 
+    #[test]
+    fn return_stmt_works() {
+        assert_prints(
+            r#"
+            fun count(n) {
+                while (n < 1000) {
+                    if (n == 3) return n;
+                    print n;
+                    n = n + 1;
+                }
+            }
+
+            count(1);
+        "#,
+            b"1\n2\n",
+        );
+    }
+
     fn assert_evaluates_to<T>(source: &str, value: T)
     where
         Cell: From<T>,
