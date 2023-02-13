@@ -94,8 +94,12 @@ where
             Stmt::Block(stmts) => self.execute_block_stmt(stmts, env),
             Stmt::Expr(expr) => self.execute_expression_stmt(expr, env),
             Stmt::Function(name, parameters, body) => {
-                let function =
-                    Function::init(name.to_owned(), parameters.to_owned(), body.to_owned());
+                let function = Function::init(
+                    name.to_owned(),
+                    parameters.to_owned(),
+                    body.to_owned(),
+                    Arc::clone(env),
+                );
                 env.borrow_mut().define(name.lexeme(), Cell::from(function));
                 Ok(())
             }
@@ -661,6 +665,28 @@ mod tests {
             }
 
             count(1);
+        "#,
+            b"1\n2\n",
+        );
+    }
+
+    #[test]
+    fn local_functions_and_closures_works() {
+        assert_prints(
+            r#"
+            fun makeCounter() {
+                var i = 0;
+                fun count() {
+                    i = i + 1;
+                    print i;
+                }
+
+                return count;
+            }
+
+            var counter = makeCounter();
+            counter();
+            counter();
         "#,
             b"1\n2\n",
         );
