@@ -163,7 +163,7 @@ impl<'a> Parser<'a> {
             None
         };
         self.consume(&TokenKind::Semicolon, || {
-            format!("Expect ';' after return value.")
+            "Expect ';' after return value.".to_string()
         })?;
         Some(Box::new(Stmt::Return(keyword, value)))
     }
