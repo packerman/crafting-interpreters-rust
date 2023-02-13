@@ -11,6 +11,10 @@ impl Token {
     pub fn new(kind: TokenKind, lexeme: Arc<str>, line: usize) -> Self {
         Self { kind, lexeme, line }
     }
+
+    pub fn lexeme(&self) -> Arc<str> {
+        Arc::clone(&self.lexeme)
+    }
 }
 
 impl Display for Token {

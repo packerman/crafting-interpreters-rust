@@ -6,7 +6,11 @@ use std::sync::Arc;
 use crate::walk_tree::error::RuntimeError;
 use crate::walk_tree::stmt::Stmt;
 
+use super::callable::{Callable, ExecutionContext};
+use super::control_flow::ControlFlow;
 use super::environment::Environment;
+use super::function::Function;
+use super::native;
 use super::{
     error::ErrorReporter,
     expr::Expr,
@@ -17,7 +21,7 @@ use super::{
 pub struct Interpreter<'a, W> {
     error_reporter: &'a ErrorReporter,
     output: W,
-    global_environment: Arc<RefCell<Environment>>,
+    globals: Arc<RefCell<Environment>>,
 }
 
 impl<'a, W> Interpreter<'a, W>
@@ -25,17 +29,25 @@ where
     W: Write,
 {
     pub fn new_with_output(error_reporter: &'a ErrorReporter, output: W) -> Self {
+        let globals = Environment::new();
+        Self::define_native_functions(&globals);
         Self {
             error_reporter,
             output,
-            global_environment: Environment::new(),
+            globals,
         }
     }
 
+    fn define_native_functions(globals: &Arc<RefCell<Environment>>) {
+        globals
+            .borrow_mut()
+            .define(Arc::from("clock"), native::clock());
+    }
+
     pub fn interpret(&mut self, statements: &[Box<Stmt>]) {
-        let env = Arc::clone(&self.global_environment);
+        let env = Arc::clone(&self.globals);
         for statement in statements {
-            if let Err(error) = self.execute(statement, &env) {
+            if let Err(ControlFlow::RuntimeError(error)) = self.execute(statement, &env) {
                 self.error_reporter.runtime_error(&error);
                 return;
             }
@@ -52,6 +64,9 @@ where
             Expr::Grouping(expr) => self.evaluate(expr, env),
             Expr::Unary(operator, operand) => self.evaluate_unary(operator, operand, env),
             Expr::Binary(left, operator, right) => self.evaluate_binary(left, operator, right, env),
+            Expr::Call(callee, paren, arguments) => {
+                self.evaluate_call(callee, paren, arguments, env)
+            }
             Expr::Logical(left, operator, right) => {
                 self.evaluate_logical(left, operator, right, env)
             }
@@ -64,7 +79,7 @@ where
     }
 
     pub fn evaluate_and_print(&mut self, expr: &Expr) -> Result<Cell> {
-        let result = self.evaluate(expr, &Arc::clone(&self.global_environment));
+        let result = self.evaluate(expr, &Arc::clone(&self.globals));
         match &result {
             Ok(result) => {
                 writeln!(self.output, "{result}")?;
@@ -74,18 +89,21 @@ where
         result.map_err(|err| anyhow!("Evaluate error: {}", err))
     }
 
-    fn execute(
-        &mut self,
-        stmt: &Stmt,
-        env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    fn execute(&mut self, stmt: &Stmt, env: &Arc<RefCell<Environment>>) -> Result<(), ControlFlow> {
         match stmt {
             Stmt::Block(stmts) => self.execute_block_stmt(stmts, env),
             Stmt::Expr(expr) => self.execute_expression_stmt(expr, env),
+            Stmt::Function(name, parameters, body) => {
+                let function =
+                    Function::init(name.to_owned(), parameters.to_owned(), body.to_owned());
+                env.borrow_mut().define(name.lexeme(), Cell::from(function));
+                Ok(())
+            }
             Stmt::If(condition, then_branch, else_branch) => {
                 self.execute_if_stmt(condition, then_branch, else_branch.as_deref(), env)
             }
             Stmt::Print(expr) => self.execute_print_stmt(expr, env),
+            Stmt::Return(keyword, expr) => self.execute_return_stmt(keyword, expr.as_deref(), env),
             Stmt::While(condition, body) => self.execute_while_stmt(condition, body, env),
             Stmt::VarDeclaration(name, initializer) => {
                 self.execute_var_stmt(name, initializer.as_deref(), env)
@@ -97,7 +115,7 @@ where
         &mut self,
         statements: &[Box<Stmt>],
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         let environment = Environment::new_with_enclosing(Arc::clone(env));
         for statement in statements {
             self.execute(statement, &environment)?;
@@ -109,7 +127,7 @@ where
         &mut self,
         expr: &Expr,
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         self.evaluate(expr, env)?;
         Ok(())
     }
@@ -120,7 +138,7 @@ where
         then_branch: &Stmt,
         else_branch: Option<&Stmt>,
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         if self.evaluate(condition, env)?.is_truthy() {
             self.execute(then_branch, env)?
         } else if let Some(else_branch) = else_branch {
@@ -133,10 +151,25 @@ where
         &mut self,
         expr: &Expr,
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         let value = self.evaluate(expr, env)?;
-        writeln!(self.output, "{value}")
-            .map_err(|err| RuntimeError::from(format!("Print error: {err}")))
+        writeln!(self.output, "{value}").map_err(|err| {
+            ControlFlow::RuntimeError(RuntimeError::from(format!("Print error: {err}")))
+        })
+    }
+
+    fn execute_return_stmt(
+        &mut self,
+        _keyword: &Token,
+        expr: Option<&Expr>,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<(), ControlFlow> {
+        let value = if let Some(expr) = expr {
+            self.evaluate(expr, env)?
+        } else {
+            Cell::from(())
+        };
+        Err(ControlFlow::from(value))
     }
 
     fn execute_var_stmt(
@@ -144,13 +177,13 @@ where
         name: &Token,
         initializer: Option<&Expr>,
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         let value = if let Some(initializer) = initializer {
             self.evaluate(initializer, env)?
         } else {
             Cell::from(())
         };
-        env.borrow_mut().define(name, value);
+        env.borrow_mut().define(name.lexeme(), value);
         Ok(())
     }
 
@@ -159,7 +192,7 @@ where
         condition: &Expr,
         body: &Stmt,
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         while self.evaluate(condition, env)?.is_truthy() {
             self.execute(body, env)?
         }
@@ -216,8 +249,8 @@ where
                 if left.is_number() && right.is_number() {
                     value::binary_operation(|a: f64, b: f64| a + b, left, operator, right)
                 } else if left.is_string() && right.is_string() {
-                    value::binary_operation(
-                        |a: String, b: Arc<str>| Arc::from(a + &b),
+                    value::binary_operation::<String, Arc<str>, Arc<str>>(
+                        |a, b| Arc::from(a + &b),
                         left,
                         operator,
                         right,
@@ -257,6 +290,44 @@ where
             TokenKind::EqualEqual => Ok(Cell::from(left == right)),
             _ => unreachable!(),
         }
+    }
+
+    fn evaluate_call(
+        &mut self,
+        callee: &Expr,
+        paren: &Token,
+        arguments: &[Box<Expr>],
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
+        let callee = self.evaluate(callee, env)?;
+
+        let arguments = self.evaluate_vec(arguments, env)?;
+
+        let function = <Arc<dyn Callable>>::try_from(callee)?;
+        if arguments.len() != function.arity() {
+            Err(RuntimeError::new(
+                paren.to_owned(),
+                &format!(
+                    "Expected {} arguments but got {}.",
+                    function.arity(),
+                    arguments.len()
+                ),
+            ))
+        } else {
+            function.call(self, &arguments)
+        }
+    }
+
+    fn evaluate_vec(
+        &mut self,
+        exprs: &[Box<Expr>],
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<Vec<Cell>, RuntimeError> {
+        let mut result = Vec::with_capacity(exprs.len());
+        for expr in exprs {
+            result.push(self.evaluate(expr, env)?);
+        }
+        Ok(result)
     }
 
     fn evaluate_logical(
@@ -320,6 +391,23 @@ where
     }
 }
 
+impl<'a, W> ExecutionContext for Interpreter<'a, W>
+where
+    W: Write,
+{
+    fn globals(&self) -> Arc<RefCell<Environment>> {
+        Arc::clone(&self.globals)
+    }
+
+    fn execute_block(
+        &mut self,
+        block: &[Box<Stmt>],
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<(), ControlFlow> {
+        self.execute_block_stmt(block, env)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{io, sync::Arc};
@@ -364,7 +452,7 @@ mod tests {
 
     #[test]
     fn concat_string_works() {
-        assert_evaluates_to(r#""ala" + " ma " + "kota";"#, Arc::from("ala ma kota"));
+        assert_evaluates_to::<Arc<str>>(r#""ala" + " ma " + "kota";"#, Arc::from("ala ma kota"));
     }
 
     #[test]
@@ -540,6 +628,41 @@ mod tests {
             }
         "#,
             b"0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n55\n89\n144\n233\n377\n610\n987\n1597\n2584\n4181\n6765\n",
+        );
+    }
+
+    #[test]
+    fn fun_stmt_works() {
+        assert_prints(
+            r#"
+            fun fib(n) {
+                if (n <= 1) return n;
+                return fib(n - 2) + fib(n - 1);
+            }
+
+            for (var i = 0; i < 20; i = i + 1) {
+                print fib(i);
+            }
+        "#,
+            b"0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n55\n89\n144\n233\n377\n610\n987\n1597\n2584\n4181\n",
+        );
+    }
+
+    #[test]
+    fn return_stmt_works() {
+        assert_prints(
+            r#"
+            fun count(n) {
+                while (n < 1000) {
+                    if (n == 3) return n;
+                    print n;
+                    n = n + 1;
+                }
+            }
+
+            count(1);
+        "#,
+            b"1\n2\n",
         );
     }
 
