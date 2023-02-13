@@ -11,6 +11,7 @@ pub enum Stmt {
     If(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>),
     Function(Token, Arc<[Token]>, Arc<[Box<Stmt>]>),
     Print(Box<Expr>),
+    Return(Token, Option<Box<Expr>>),
     While(Box<Expr>, Box<Stmt>),
     VarDeclaration(Token, Option<Box<Expr>>),
 }

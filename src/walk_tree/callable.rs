@@ -1,21 +1,28 @@
 use std::{cell::RefCell, fmt::Debug, ptr, sync::Arc};
 
-use super::{environment::Environment, error::RuntimeError, stmt::Stmt, value::Cell};
+use super::{
+    control_flow::ControlFlow, environment::Environment, error::RuntimeError, stmt::Stmt,
+    value::Cell,
+};
 
-pub trait Context {
+pub trait ExecutionContext {
     fn globals(&self) -> Arc<RefCell<Environment>>;
 
     fn execute_block(
         &mut self,
         block: &[Box<Stmt>],
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError>;
+    ) -> Result<(), ControlFlow>;
 }
 
 pub trait Callable: Debug {
     fn arity(&self) -> usize;
 
-    fn call(&self, context: &mut dyn Context, arguments: &[Cell]) -> Result<Cell, RuntimeError>;
+    fn call(
+        &self,
+        context: &mut dyn ExecutionContext,
+        arguments: &[Cell],
+    ) -> Result<Cell, RuntimeError>;
 }
 
 #[allow(clippy::vtable_address_comparisons)]

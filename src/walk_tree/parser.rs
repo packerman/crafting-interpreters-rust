@@ -81,6 +81,8 @@ impl<'a> Parser<'a> {
             self.if_statement()
         } else if self.match_single(&TokenKind::Print) {
             self.print_statement()
+        } else if self.match_single(&TokenKind::Return) {
+            self.return_stmt()
         } else if self.match_single(&TokenKind::While) {
             self.while_statement()
         } else if self.match_single(&TokenKind::LeftBrace) {
@@ -153,6 +155,19 @@ impl<'a> Parser<'a> {
         Some(Box::new(Stmt::Print(value)))
     }
 
+    fn return_stmt(&mut self) -> Option<Box<Stmt>> {
+        let keyword = self.previous().to_owned();
+        let value = if !self.check(&TokenKind::Semicolon) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.consume(&TokenKind::Semicolon, || {
+            format!("Expect ';' after return value.")
+        })?;
+        Some(Box::new(Stmt::Return(keyword, value)))
+    }
+
     fn var_declaration(&mut self) -> Option<Box<Stmt>> {
         let name = self
             .consume(&TokenKind::Identifier, || {
@@ -203,8 +218,10 @@ impl<'a> Parser<'a> {
                 }
 
                 parameters.push(
-                    self.consume(&TokenKind::Identifier, || "Expect parameter name.".to_string())?
-                        .to_owned(),
+                    self.consume(&TokenKind::Identifier, || {
+                        "Expect parameter name.".to_string()
+                    })?
+                    .to_owned(),
                 );
                 if !self.match_single(&TokenKind::Comma) {
                     break;

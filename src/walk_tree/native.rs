@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::SystemTime};
 
 use super::{
-    callable::{Callable, Context},
+    callable::{Callable, ExecutionContext},
     error::RuntimeError,
     value::Cell,
 };
@@ -14,7 +14,11 @@ impl Callable for Clock {
         0
     }
 
-    fn call(&self, _context: &mut dyn Context, _argumentss: &[Cell]) -> Result<Cell, RuntimeError> {
+    fn call(
+        &self,
+        _context: &mut dyn ExecutionContext,
+        _argumentss: &[Cell],
+    ) -> Result<Cell, RuntimeError> {
         let duration = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .map_err(|_| RuntimeError::from(String::from("SystemTime before UNIX EPOCH!")))?;

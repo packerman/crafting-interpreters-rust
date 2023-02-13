@@ -6,7 +6,8 @@ use std::sync::Arc;
 use crate::walk_tree::error::RuntimeError;
 use crate::walk_tree::stmt::Stmt;
 
-use super::callable::{Callable, Context};
+use super::callable::{Callable, ExecutionContext};
+use super::control_flow::ControlFlow;
 use super::environment::Environment;
 use super::function::Function;
 use super::native;
@@ -46,7 +47,7 @@ where
     pub fn interpret(&mut self, statements: &[Box<Stmt>]) {
         let env = Arc::clone(&self.globals);
         for statement in statements {
-            if let Err(error) = self.execute(statement, &env) {
+            if let Err(ControlFlow::RuntimeError(error)) = self.execute(statement, &env) {
                 self.error_reporter.runtime_error(&error);
                 return;
             }
@@ -88,11 +89,7 @@ where
         result.map_err(|err| anyhow!("Evaluate error: {}", err))
     }
 
-    fn execute(
-        &mut self,
-        stmt: &Stmt,
-        env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    fn execute(&mut self, stmt: &Stmt, env: &Arc<RefCell<Environment>>) -> Result<(), ControlFlow> {
         match stmt {
             Stmt::Block(stmts) => self.execute_block_stmt(stmts, env),
             Stmt::Expr(expr) => self.execute_expression_stmt(expr, env),
@@ -106,6 +103,7 @@ where
                 self.execute_if_stmt(condition, then_branch, else_branch.as_deref(), env)
             }
             Stmt::Print(expr) => self.execute_print_stmt(expr, env),
+            Stmt::Return(keyword, expr) => self.execute_return_stmt(keyword, expr.as_deref(), env),
             Stmt::While(condition, body) => self.execute_while_stmt(condition, body, env),
             Stmt::VarDeclaration(name, initializer) => {
                 self.execute_var_stmt(name, initializer.as_deref(), env)
@@ -117,7 +115,7 @@ where
         &mut self,
         statements: &[Box<Stmt>],
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         let environment = Environment::new_with_enclosing(Arc::clone(env));
         for statement in statements {
             self.execute(statement, &environment)?;
@@ -129,7 +127,7 @@ where
         &mut self,
         expr: &Expr,
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         self.evaluate(expr, env)?;
         Ok(())
     }
@@ -140,7 +138,7 @@ where
         then_branch: &Stmt,
         else_branch: Option<&Stmt>,
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         if self.evaluate(condition, env)?.is_truthy() {
             self.execute(then_branch, env)?
         } else if let Some(else_branch) = else_branch {
@@ -153,10 +151,25 @@ where
         &mut self,
         expr: &Expr,
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         let value = self.evaluate(expr, env)?;
-        writeln!(self.output, "{value}")
-            .map_err(|err| RuntimeError::from(format!("Print error: {err}")))
+        writeln!(self.output, "{value}").map_err(|err| {
+            ControlFlow::RuntimeError(RuntimeError::from(format!("Print error: {err}")))
+        })
+    }
+
+    fn execute_return_stmt(
+        &mut self,
+        _keyword: &Token,
+        expr: Option<&Expr>,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<(), ControlFlow> {
+        let value = if let Some(expr) = expr {
+            self.evaluate(expr, env)?
+        } else {
+            Cell::from(())
+        };
+        Err(ControlFlow::from(value))
     }
 
     fn execute_var_stmt(
@@ -164,7 +177,7 @@ where
         name: &Token,
         initializer: Option<&Expr>,
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         let value = if let Some(initializer) = initializer {
             self.evaluate(initializer, env)?
         } else {
@@ -179,7 +192,7 @@ where
         condition: &Expr,
         body: &Stmt,
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         while self.evaluate(condition, env)?.is_truthy() {
             self.execute(body, env)?
         }
@@ -378,7 +391,7 @@ where
     }
 }
 
-impl<'a, W> Context for Interpreter<'a, W>
+impl<'a, W> ExecutionContext for Interpreter<'a, W>
 where
     W: Write,
 {
@@ -390,7 +403,7 @@ where
         &mut self,
         block: &[Box<Stmt>],
         env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         self.execute_block_stmt(block, env)
     }
 }
@@ -615,6 +628,23 @@ mod tests {
             }
         "#,
             b"0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n55\n89\n144\n233\n377\n610\n987\n1597\n2584\n4181\n6765\n",
+        );
+    }
+
+    #[test]
+    fn fun_stmt_works() {
+        assert_prints(
+            r#"
+            fun fib(n) {
+                if (n <= 1) return n;
+                return fib(n - 2) + fib(n - 1);
+            }
+
+            for (var i = 0; i < 20; i = i + 1) {
+                print fib(i);
+            }
+        "#,
+            b"0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n55\n89\n144\n233\n377\n610\n987\n1597\n2584\n4181\n",
         );
     }
 

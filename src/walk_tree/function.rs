@@ -1,7 +1,8 @@
 use std::{fmt::Display, sync::Arc};
 
 use super::{
-    callable::{Callable, Context},
+    callable::{Callable, ExecutionContext},
+    control_flow::ControlFlow,
     environment::Environment,
     error::RuntimeError,
     stmt::Stmt,
@@ -35,15 +36,23 @@ impl Callable for Function {
         self.parameters.len()
     }
 
-    fn call(&self, context: &mut dyn Context, arguments: &[Cell]) -> Result<Cell, RuntimeError> {
+    fn call(
+        &self,
+        context: &mut dyn ExecutionContext,
+        arguments: &[Cell],
+    ) -> Result<Cell, RuntimeError> {
         let environment = Environment::new_with_enclosing(context.globals());
         for (i, parameter) in self.parameters.iter().enumerate() {
             environment
                 .borrow_mut()
                 .define(parameter.lexeme(), arguments[i].to_owned())
         }
-        context.execute_block(&self.body, &environment)?;
-        Ok(Cell::from(()))
+        let result = context.execute_block(&self.body, &environment);
+        match result {
+            Err(ControlFlow::Return(value)) => Ok(value),
+            Err(ControlFlow::RuntimeError(runtime_error)) => Err(runtime_error),
+            _ => Ok(Cell::from(())),
+        }
     }
 }
 
