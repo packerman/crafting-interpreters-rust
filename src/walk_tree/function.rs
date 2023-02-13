@@ -1,4 +1,4 @@
-use std::{fmt::Display, sync::Arc};
+use std::{cell::RefCell, fmt::Display, sync::Arc};
 
 use super::{
     callable::{Callable, ExecutionContext},
@@ -15,6 +15,7 @@ pub struct Function {
     name: Token,
     parameters: Arc<[Token]>,
     body: Arc<[Box<Stmt>]>,
+    closure: Arc<RefCell<Environment>>,
 }
 
 impl Function {
@@ -22,11 +23,13 @@ impl Function {
         name: Token,
         parameters: Arc<[Token]>,
         body: Arc<[Box<Stmt>]>,
+        closure: Arc<RefCell<Environment>>,
     ) -> Arc<dyn Callable> {
         Arc::new(Self {
             name,
             parameters,
             body,
+            closure,
         })
     }
 }
@@ -41,7 +44,7 @@ impl Callable for Function {
         context: &mut dyn ExecutionContext,
         arguments: &[Cell],
     ) -> Result<Cell, RuntimeError> {
-        let environment = Environment::new_with_enclosing(context.globals());
+        let environment = Environment::new_with_enclosing(Arc::clone(&self.closure));
         for (i, parameter) in self.parameters.iter().enumerate() {
             environment
                 .borrow_mut()
