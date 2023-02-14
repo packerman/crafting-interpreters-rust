@@ -12,7 +12,7 @@ use super::{
 
 #[derive(Debug)]
 pub struct Function {
-    name: Token,
+    name: Option<Token>,
     parameters: Arc<[Token]>,
     body: Arc<[Box<Stmt>]>,
     closure: Arc<RefCell<Environment>>,
@@ -20,7 +20,7 @@ pub struct Function {
 
 impl Function {
     pub fn init(
-        name: Token,
+        name: Option<Token>,
         parameters: Arc<[Token]>,
         body: Arc<[Box<Stmt>]>,
         closure: Arc<RefCell<Environment>>,
@@ -61,6 +61,10 @@ impl Callable for Function {
 
 impl Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<fn {}>", self.name.lexeme)
+        if let Some(name) = &self.name {
+            write!(f, "<fn {}>", name.lexeme)
+        } else {
+            write!(f, "<anonymous fn>")
+        }
     }
 }

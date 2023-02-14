@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::{token::Token, value::Cell};
+use super::{stmt::Stmt, token::Token, value::Cell};
 
 pub type Operator = Token;
 
@@ -15,6 +15,7 @@ pub enum Expr {
     Variable(Token),
     Assignment(Token, Box<Expr>),
     Logical(Box<Expr>, Token, Box<Expr>),
+    Function(Option<Token>, Arc<[Token]>, Arc<[Box<Stmt>]>),
 }
 
 impl From<bool> for Expr {
