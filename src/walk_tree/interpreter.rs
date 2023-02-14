@@ -42,6 +42,9 @@ where
         globals
             .borrow_mut()
             .define(Arc::from("clock"), native::clock());
+        globals
+            .borrow_mut()
+            .define(Arc::from("print"), native::print())
     }
 
     pub fn interpret(&mut self, statements: &[Box<Stmt>]) {
@@ -105,7 +108,6 @@ where
             Stmt::If(condition, then_branch, else_branch) => {
                 self.execute_if_stmt(condition, then_branch, else_branch.as_deref(), env)
             }
-            Stmt::Print(expr) => self.execute_print_stmt(expr, env),
             Stmt::Return(keyword, expr) => self.execute_return_stmt(keyword, expr.as_deref(), env),
             Stmt::While(condition, body) => self.execute_while_stmt(condition, body, env),
             Stmt::VarDeclaration(name, initializer) => {
@@ -148,17 +150,6 @@ where
             self.execute(else_branch, env)?
         }
         Ok(())
-    }
-
-    fn execute_print_stmt(
-        &mut self,
-        expr: &Expr,
-        env: &Arc<RefCell<Environment>>,
-    ) -> Result<(), ControlFlow> {
-        let value = self.evaluate(expr, env)?;
-        writeln!(self.output, "{value}").map_err(|err| {
-            ControlFlow::RuntimeError(RuntimeError::from(format!("Print error: {err}")))
-        })
     }
 
     fn execute_return_stmt(
@@ -409,6 +400,10 @@ where
     ) -> Result<(), ControlFlow> {
         self.execute_block_stmt(block, env)
     }
+
+    fn output(&mut self) -> &mut dyn Write {
+        &mut self.output
+    }
 }
 
 #[cfg(test)]
@@ -460,7 +455,7 @@ mod tests {
 
     #[test]
     fn print_works() {
-        assert_prints(r#"print 2+3;"#, b"5\n");
+        assert_prints(r#"print(2 + 3);"#, b"5\n");
     }
 
     #[test]
@@ -469,7 +464,7 @@ mod tests {
             r#"
         var a = 1;
         var b = 2;
-        print a + b;"#,
+        print(a + b);"#,
             b"3\n",
         );
     }
@@ -479,9 +474,9 @@ mod tests {
         assert_prints(
             r#"
         var a = 1;
-        print a;
+        print(a);
         a = 2;
-        print a;
+        print(a);
         "#,
             b"1\n2\n",
         );
@@ -499,17 +494,17 @@ mod tests {
                 var b = "outer b";
                 {
                     var a = "inner a";
-                    print a;
-                    print b;
-                    print c;
+                    print(a);
+                    print(b);
+                    print(c);
                 }
-                print a;
-                print b;
-                print c;
+                print(a);
+                print(b);
+                print(c);
             }
-            print a;
-            print b;
-            print c;
+            print(a);
+            print(b);
+            print(c);
         "#,
             b"inner a\nouter b\nglobal c\nouter a\nouter b\nglobal c\nglobal a\nglobal b\nglobal c\n",
         );
@@ -519,9 +514,9 @@ mod tests {
     fn logical_or_works() {
         assert_prints(
             r#"
-            print "hi" or 2;
-            print nil or "yes";
-            print nil or false or 5 or 6;
+            print("hi" or 2);
+            print(nil or "yes");
+            print(nil or false or 5 or 6);
         "#,
             b"hi\nyes\n5\n",
         )
@@ -531,10 +526,10 @@ mod tests {
     fn logical_and_works() {
         assert_prints(
             r#"
-            print "hi" and 2;
-            print nil and "yes";
-            print false and nil and 5 and 6;
-            print 3 and 4 and 5 and 6;
+            print("hi" and 2);
+            print(nil and "yes");
+            print(false and nil and 5 and 6);
+            print(3 and 4 and 5 and 6);
         "#,
             b"2\nnil\nfalse\n6\n",
         )
@@ -545,24 +540,24 @@ mod tests {
         assert_prints(
             r#"
             if (true) {
-                print "yes";
+                print("yes");
             } else {
-                print "no";
+                print("no");
             }
             if (0) {
-                print "yes";
+                print("yes");
             } else {
-                print "no";
+                print("no");
             }
             if (nil) {
-                print "yes";
+                print("yes");
             } else {
-                print "no";
+                print("no");
             }
             if (false) {
-                print "yes";
+                print("yes");
             } else {
-                print "no";
+                print("no");
             }
         "#,
             b"yes\nyes\nno\nno\n",
@@ -575,27 +570,27 @@ mod tests {
             r#"
             if (true)
                 if (true)
-                    print "thenTrueTrue";
+                    print("thenTrueTrue");
                 else
-                    print "elseTrueTrue";
+                    print("elseTrueTrue");
             
             if (true)
                 if (false)
-                    print "thenTrueFalse";
+                    print("thenTrueFalse");
                 else
-                    print "elseTrueFalse";
+                    print("elseTrueFalse");
 
             if (false)
                 if (true)
-                    print "thenFalseTrue";
+                    print("thenFalseTrue");
                 else
-                    print "elseFalseTrue";
+                    print("elseFalseTrue");
 
             if (false)
                 if (false)
-                    print "thenFalseFalse";
+                    print("thenFalseFalse");
                 else
-                    print "elseFalseFalse";
+                    print("elseFalseFalse");
         "#,
             b"thenTrueTrue\nelseTrueFalse\n",
         )
@@ -611,7 +606,7 @@ mod tests {
                 f = f * n;
                 n = n - 1;
             }
-            print f;
+            print(f);
         "#,
             b"120\n",
         );
@@ -625,7 +620,7 @@ mod tests {
             var temp;
 
             for (var b = 1; a < 10000; b = temp + b) {
-                print a;
+                print(a);
                 temp = a;
                 a = b;
             }
@@ -644,7 +639,7 @@ mod tests {
             }
 
             for (var i = 0; i < 20; i = i + 1) {
-                print fib(i);
+                print(fib(i));
             }
         "#,
             b"0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n55\n89\n144\n233\n377\n610\n987\n1597\n2584\n4181\n",
@@ -658,7 +653,7 @@ mod tests {
             fun count(n) {
                 while (n < 1000) {
                     if (n == 3) return n;
-                    print n;
+                    print(n);
                     n = n + 1;
                 }
             }
@@ -677,7 +672,7 @@ mod tests {
                 var i = 0;
                 fun count() {
                     i = i + 1;
-                    print i;
+                    print(i);
                 }
 
                 return count;
@@ -702,10 +697,34 @@ mod tests {
             }
 
             thrice(fun (a) {
-                print a;
+                print(a);
             });
         "#,
             b"1\n2\n3\n",
+        );
+    }
+
+    #[test]
+    fn man_or_boy() {
+        assert_prints(
+            r#"
+            fun a(k, x1, x2, x3, x4, x5) {
+                fun b() {
+                  k = k - 1;
+                  return a(k, b, x1, x2, x3, x4);
+                }
+                return (k > 0) ? b() : x4() + x5();
+              }
+
+            fun x(n) {
+                return fun () {
+                  return n;
+                };
+            }
+
+            print(a(10, x(1), x(-1), x(-1), x(1), x(0)));
+        "#,
+            b"-67",
         );
     }
 

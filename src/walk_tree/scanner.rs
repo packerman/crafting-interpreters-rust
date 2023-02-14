@@ -33,7 +33,6 @@ impl<'a> Scanner<'a> {
             ("if", TokenKind::If),
             ("nil", TokenKind::Nil),
             ("or", TokenKind::Or),
-            ("print", TokenKind::Print),
             ("return", TokenKind::Return),
             ("super", TokenKind::Super),
             ("this", TokenKind::This),

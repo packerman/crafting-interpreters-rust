@@ -9,7 +9,6 @@ pub enum Stmt {
     Block(Arc<[Box<Stmt>]>),
     Expr(Box<Expr>),
     If(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>),
-    Print(Box<Expr>),
     Return(Token, Option<Box<Expr>>),
     While(Box<Expr>, Box<Stmt>),
     VarDeclaration(Token, Option<Box<Expr>>),

@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn is_able_to_enter_expressions_1() {
-        assert_prints(vec!["print 2+2;".into(), "2+2".into()], b"4\n4\n")
+        assert_prints(vec!["print(2 + 2);".into(), "2+2".into()], b"4\nnil\n4\n")
     }
 
     #[test]

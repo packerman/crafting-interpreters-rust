@@ -25,14 +25,13 @@ impl<'a> Parser<'a> {
     const TERM_OPERATORS: [TokenKind; 2] = [TokenKind::Minus, TokenKind::Plus];
     const FACTOR_OPERATORS: [TokenKind; 2] = [TokenKind::Slash, TokenKind::Star];
     const UNARY_OPERATORS: [TokenKind; 2] = [TokenKind::Bang, TokenKind::Minus];
-    const SYNCHRONIZE: [TokenKind; 8] = [
+    const SYNCHRONIZE: [TokenKind; 7] = [
         TokenKind::Class,
         TokenKind::Fun,
         TokenKind::Var,
         TokenKind::For,
         TokenKind::If,
         TokenKind::While,
-        TokenKind::Print,
         TokenKind::Return,
     ];
 
@@ -79,8 +78,6 @@ impl<'a> Parser<'a> {
             self.for_statement()
         } else if self.match_single(&TokenKind::If) {
             self.if_statement()
-        } else if self.match_single(&TokenKind::Print) {
-            self.print_statement()
         } else if self.match_single(&TokenKind::Return) {
             self.return_stmt()
         } else if self.match_single(&TokenKind::While) {
@@ -147,12 +144,6 @@ impl<'a> Parser<'a> {
             None
         };
         Some(Box::new(Stmt::If(condition, then_branch, else_branch)))
-    }
-
-    fn print_statement(&mut self) -> Option<Box<Stmt>> {
-        let value = self.expression()?;
-        self.consume(&TokenKind::Semicolon, || "Expect ';' after value.".into())?;
-        Some(Box::new(Stmt::Print(value)))
     }
 
     fn return_stmt(&mut self) -> Option<Box<Stmt>> {
