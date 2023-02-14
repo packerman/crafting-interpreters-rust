@@ -64,6 +64,15 @@ where
             Expr::Grouping(expr) => self.evaluate(expr, env),
             Expr::Unary(operator, operand) => self.evaluate_unary(operator, operand, env),
             Expr::Binary(left, operator, right) => self.evaluate_binary(left, operator, right, env),
+            Expr::Function(name, parameters, body) => {
+                let function = Function::init(
+                    name.to_owned(),
+                    parameters.to_owned(),
+                    body.to_owned(),
+                    Arc::clone(env),
+                );
+                Ok(Cell::from(function))
+            }
             Expr::Call(callee, paren, arguments) => {
                 self.evaluate_call(callee, paren, arguments, env)
             }
@@ -93,16 +102,6 @@ where
         match stmt {
             Stmt::Block(stmts) => self.execute_block_stmt(stmts, env),
             Stmt::Expr(expr) => self.execute_expression_stmt(expr, env),
-            Stmt::Function(name, parameters, body) => {
-                let function = Function::init(
-                    name.to_owned(),
-                    parameters.to_owned(),
-                    body.to_owned(),
-                    Arc::clone(env),
-                );
-                env.borrow_mut().define(name.lexeme(), Cell::from(function));
-                Ok(())
-            }
             Stmt::If(condition, then_branch, else_branch) => {
                 self.execute_if_stmt(condition, then_branch, else_branch.as_deref(), env)
             }
@@ -671,7 +670,7 @@ mod tests {
     }
 
     #[test]
-    fn local_functions_and_closures_works() {
+    fn local_functions_and_closures_work() {
         assert_prints(
             r#"
             fun makeCounter() {
@@ -689,6 +688,24 @@ mod tests {
             counter();
         "#,
             b"1\n2\n",
+        );
+    }
+
+    #[test]
+    fn lambda_works() {
+        assert_prints(
+            r#"
+            fun thrice(fn) {
+                for (var i = 1; i<= 3; i = i + 1) {
+                    fn(i);
+                }
+            }
+
+            thrice(fun (a) {
+                print a;
+            });
+        "#,
+            b"1\n2\n3\n",
         );
     }
 

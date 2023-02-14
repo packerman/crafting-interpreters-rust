@@ -4,12 +4,11 @@ use crate::walk_tree::expr::Expr;
 
 use super::token::Token;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Stmt {
     Block(Arc<[Box<Stmt>]>),
     Expr(Box<Expr>),
     If(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>),
-    Function(Token, Arc<[Token]>, Arc<[Box<Stmt>]>),
     Print(Box<Expr>),
     Return(Token, Option<Box<Expr>>),
     While(Box<Expr>, Box<Stmt>),

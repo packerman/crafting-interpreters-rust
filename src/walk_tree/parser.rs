@@ -66,7 +66,7 @@ impl<'a> Parser<'a> {
 
     fn try_declaration(&mut self) -> Option<Box<Stmt>> {
         if self.match_single(&TokenKind::Fun) {
-            self.function("function")
+            self.function_declaration("function")
         } else if self.match_single(&TokenKind::Var) {
             self.var_declaration()
         } else {
@@ -203,39 +203,12 @@ impl<'a> Parser<'a> {
         Some(Box::new(Stmt::Expr(expr)))
     }
 
-    fn function(&mut self, kind: &str) -> Option<Box<Stmt>> {
+    fn function_declaration(&mut self, kind: &str) -> Option<Box<Stmt>> {
         let name = self
             .consume(&TokenKind::Identifier, || format!("Expect {kind} name."))?
-            .to_owned();
-        self.consume(&TokenKind::LeftParen, || {
-            format!("Expect '(' after {kind} name.")
-        })?;
-        let mut parameters = Vec::new();
-        if !self.check(&TokenKind::RightParen) {
-            loop {
-                if parameters.len() >= 255 {
-                    self.error::<()>(self.peek(), "Can't have more than 255 parameters.");
-                }
-
-                parameters.push(
-                    self.consume(&TokenKind::Identifier, || {
-                        "Expect parameter name.".to_string()
-                    })?
-                    .to_owned(),
-                );
-                if !self.match_single(&TokenKind::Comma) {
-                    break;
-                }
-            }
-        }
-        self.consume(&TokenKind::RightParen, || {
-            "Expect ')' after parameters.".to_string()
-        })?;
-        self.consume(&TokenKind::LeftBrace, || {
-            format!("Expect '{{' before {kind} body.")
-        })?;
-        let body = self.stmt_vec()?;
-        Some(Box::new(Stmt::Function(name, Arc::from(parameters), body)))
+            .clone();
+        let function = Box::new(self.function_expression(kind, Some(name.clone()))?);
+        Some(Box::new(Stmt::VarDeclaration(name, Some(function))))
     }
 
     fn block(&mut self) -> Option<Box<Stmt>> {
@@ -387,6 +360,8 @@ impl<'a> Parser<'a> {
             literal
         } else if self.match_single(&TokenKind::Identifier) {
             Expr::Variable(self.previous().to_owned())
+        } else if self.match_single(&TokenKind::Fun) {
+            self.anonymous_function()?
         } else if self.match_single(&TokenKind::LeftParen) {
             let expr = self.expression()?;
             self.consume(&TokenKind::RightParen, || {
@@ -413,6 +388,42 @@ impl<'a> Parser<'a> {
             self.advance();
         }
         expr
+    }
+
+    fn anonymous_function(&mut self) -> Option<Expr> {
+        self.function_expression("function", None)
+    }
+
+    fn function_expression(&mut self, kind: &str, name: Option<Token>) -> Option<Expr> {
+        self.consume(&TokenKind::LeftParen, || {
+            format!("Expect '(' after {kind} name.")
+        })?;
+        let mut parameters = Vec::new();
+        if !self.check(&TokenKind::RightParen) {
+            loop {
+                if parameters.len() >= 255 {
+                    self.error::<()>(self.peek(), "Can't have more than 255 parameters.");
+                }
+
+                parameters.push(
+                    self.consume(&TokenKind::Identifier, || {
+                        "Expect parameter name.".to_string()
+                    })?
+                    .to_owned(),
+                );
+                if !self.match_single(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(&TokenKind::RightParen, || {
+            "Expect ')' after parameters.".to_string()
+        })?;
+        self.consume(&TokenKind::LeftBrace, || {
+            format!("Expect '{{' before {kind} body.")
+        })?;
+        let body = self.stmt_vec()?;
+        Some(Expr::Function(name, Arc::from(parameters), body))
     }
 
     fn match_any(&mut self, kinds: &[TokenKind]) -> bool {
