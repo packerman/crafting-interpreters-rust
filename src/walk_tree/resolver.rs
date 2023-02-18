@@ -34,12 +34,12 @@ impl<'a> Resolver<'a> {
             Stmt::Block(stmts) => self.resolve_block_stmt(stmts),
             Stmt::Expr(expression) => self.resolve_expression_stmt(expression),
             Stmt::If(condition, then_branch, else_branch) => {
-                self.resolve_if_stmt(condition, then_branch, else_branch.as_ref())
+                self.resolve_if_stmt(condition, then_branch, else_branch.as_deref())
             }
-            Stmt::Return(keyword, value) => self.resolve_return_stmt(keyword, value.as_ref()),
+            Stmt::Return(keyword, value) => self.resolve_return_stmt(keyword, value.as_deref()),
             Stmt::While(condition, body) => self.resolve_while_stmt(condition, body),
             Stmt::VarDeclaration(name, initializer) => {
-                self.resolve_var_stmt(name, initializer.as_ref())
+                self.resolve_var_stmt(name, initializer.as_deref())
             }
         }
     }
@@ -77,7 +77,7 @@ impl<'a> Resolver<'a> {
         self.scopes.pop();
     }
 
-    fn resolve_var_stmt(&mut self, name: &Token, initializer: Option<&Box<Expr>>) {
+    fn resolve_var_stmt(&mut self, name: &Token, initializer: Option<&Expr>) {
         self.declare(name);
         if let Some(initializer) = initializer {
             self.resolve_expr(initializer)
@@ -166,7 +166,7 @@ impl<'a> Resolver<'a> {
         &mut self,
         condition: &Expr,
         then_branch: &Stmt,
-        else_branch: Option<&Box<Stmt>>,
+        else_branch: Option<&Stmt>,
     ) {
         self.resolve_expr(condition);
         self.resolve_stmt(then_branch);
@@ -175,7 +175,7 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn resolve_return_stmt(&mut self, keyword: &Token, value: Option<&Box<Expr>>) {
+    fn resolve_return_stmt(&mut self, keyword: &Token, value: Option<&Expr>) {
         if self.current_function.is_none() {
             self.error_reporter
                 .token_error(keyword, "Can't return from top-level code.")

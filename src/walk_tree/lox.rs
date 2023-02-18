@@ -90,7 +90,7 @@ where
             return;
         }
 
-        let mut resolver = Resolver::new(&mut self.interpreter, &self.error_reporter);
+        let mut resolver = Resolver::new(&mut self.interpreter, self.error_reporter);
         resolver.resolve_stmts(&statements);
         if self.error_reporter.had_error() {
             return;
