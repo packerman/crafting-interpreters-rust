@@ -48,7 +48,7 @@ impl Callable for Function {
         for (i, parameter) in self.parameters.iter().enumerate() {
             environment
                 .borrow_mut()
-                .define(parameter.lexeme(), arguments[i].to_owned())
+                .define(Arc::clone(parameter.lexeme()), arguments[i].to_owned())
         }
         let result = context.execute_block(&self.body, &environment);
         match result {
@@ -62,7 +62,7 @@ impl Callable for Function {
 impl Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(name) = &self.name {
-            write!(f, "<fn {}>", name.lexeme)
+            write!(f, "<fn {}>", name.lexeme())
         } else {
             write!(f, "<anonymous fn>")
         }

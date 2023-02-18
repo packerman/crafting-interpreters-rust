@@ -5,7 +5,10 @@ use rustyline::{error::ReadlineError, Editor};
 
 use crate::walk_tree::exit_code;
 
-use super::{error::ErrorReporter, interpreter::Interpreter, parser::Parser, scanner::Scanner};
+use super::{
+    error::ErrorReporter, interpreter::Interpreter, parser::Parser, resolver::Resolver,
+    scanner::Scanner,
+};
 
 pub struct Lox<'a, W> {
     scanner: Scanner<'a>,
@@ -64,16 +67,6 @@ where
         Ok(ExitCode::SUCCESS)
     }
 
-    fn run(&mut self, source: String) {
-        let tokens: Vec<_> = self.scanner.scan_tokens(&source).collect();
-        let mut parser = Parser::new(tokens, self.error_reporter);
-        let statements = parser.parse().unwrap_or_default();
-        if self.error_reporter.had_error() {
-            return;
-        }
-        self.interpreter.interpret(&statements)
-    }
-
     fn run_interactively(&mut self, line: String) {
         let result = self
             .error_reporter
@@ -87,6 +80,23 @@ where
             self.run(line);
         }
         self.error_reporter.reset();
+    }
+
+    fn run(&mut self, source: String) {
+        let tokens: Vec<_> = self.scanner.scan_tokens(&source).collect();
+        let mut parser = Parser::new(tokens, self.error_reporter);
+        let statements = parser.parse().unwrap_or_default();
+        if self.error_reporter.had_error() {
+            return;
+        }
+
+        let mut resolver = Resolver::new(&mut self.interpreter, &self.error_reporter);
+        resolver.resolve_stmts(&statements);
+        if self.error_reporter.had_error() {
+            return;
+        }
+
+        self.interpreter.interpret(&statements)
     }
 
     fn try_evaluate_expression(&mut self, source: &str) -> Result<()> {

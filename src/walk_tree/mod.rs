@@ -1,4 +1,5 @@
 pub mod callable;
+pub mod control_flow;
 pub mod environment;
 pub mod error;
 pub mod exit_code;
@@ -8,8 +9,8 @@ pub mod interpreter;
 pub mod lox;
 pub mod native;
 pub mod parser;
+pub mod resolver;
 pub mod scanner;
 pub mod stmt;
 pub mod token;
 pub mod value;
-pub mod control_flow;

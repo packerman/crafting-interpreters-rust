@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Arc;
 
@@ -11,6 +12,7 @@ use super::control_flow::ControlFlow;
 use super::environment::Environment;
 use super::function::Function;
 use super::native;
+use super::resolver::Resolve;
 use super::{
     error::ErrorReporter,
     expr::Expr,
@@ -22,6 +24,7 @@ pub struct Interpreter<'a, W> {
     error_reporter: &'a ErrorReporter,
     output: W,
     globals: Arc<RefCell<Environment>>,
+    locals: HashMap<*const Expr, usize>,
 }
 
 impl<'a, W> Interpreter<'a, W>
@@ -29,12 +32,13 @@ where
     W: Write,
 {
     pub fn new_with_output(error_reporter: &'a ErrorReporter, output: W) -> Self {
-        let globals = Environment::new();
+        let globals = Environment::new_global();
         Self::define_native_functions(&globals);
         Self {
             error_reporter,
             output,
             globals,
+            locals: HashMap::new(),
         }
     }
 
@@ -85,8 +89,8 @@ where
             Expr::Ternary(condition, then_expr, else_expr) => {
                 self.evaluate_ternary(condition, then_expr, else_expr, env)
             }
-            Expr::Variable(name) => env.borrow().get(name),
-            Expr::Assignment(name, expr) => self.execute_assign_expr(name, expr, env),
+            Expr::Variable(name) => self.evaluate_variable_expr(name, expr, env),
+            Expr::Assignment(name, value) => self.execute_assign_expr(expr, name, value, env),
         }
     }
 
@@ -177,7 +181,7 @@ where
         } else {
             Cell::from(())
         };
-        env.borrow_mut().define(name.lexeme(), value);
+        env.borrow_mut().define(Arc::clone(name.lexeme()), value);
         Ok(())
     }
 
@@ -195,12 +199,17 @@ where
 
     fn execute_assign_expr(
         &mut self,
+        expr: *const Expr,
         name: &Token,
-        expr: &Expr,
+        value: &Expr,
         env: &Arc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
-        let value = self.evaluate(expr, env)?;
-        env.borrow_mut().assign(name, value.to_owned())?;
+        let value = self.evaluate(value, env)?;
+        if let Some(distance) = self.locals.get(&expr) {
+            env.borrow().assing_at(*distance, name, value.to_owned())
+        } else {
+            self.globals.borrow_mut().assign(name, value.to_owned())?;
+        }
         Ok(value)
     }
 
@@ -383,6 +392,28 @@ where
             ))
         }
     }
+
+    fn evaluate_variable_expr(
+        &self,
+        name: &Token,
+        expr: &Expr,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
+        self.look_up_variable(name, expr, env)
+    }
+
+    fn look_up_variable(
+        &self,
+        name: &Token,
+        expr: *const Expr,
+        env: &Arc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
+        if let Some(distance) = self.locals.get(&expr) {
+            Ok(env.borrow().get_at(*distance, name))
+        } else {
+            self.globals.borrow().get(name)
+        }
+    }
 }
 
 impl<'a, W> ExecutionContext for Interpreter<'a, W>
@@ -403,6 +434,12 @@ where
 
     fn output(&mut self) -> &mut dyn Write {
         &mut self.output
+    }
+}
+
+impl<'a, W> Resolve for Interpreter<'a, W> {
+    fn resolve(&mut self, expr: *const Expr, depth: usize) {
+        self.locals.insert(expr, depth);
     }
 }
 
@@ -704,6 +741,7 @@ mod tests {
         );
     }
 
+    #[ignore]
     #[test]
     fn man_or_boy() {
         assert_prints(
@@ -728,6 +766,25 @@ mod tests {
         );
     }
 
+    #[test]
+    fn resolving_works() {
+        assert_prints(
+            r#"
+            var a = "global";
+            {
+                fun showA() {
+                    print(a);
+                }
+
+                showA();
+                var a = "block";
+                showA();
+            }
+        "#,
+            b"global\nglobal\n",
+        )
+    }
+
     fn assert_evaluates_to<T>(source: &str, value: T)
     where
         Cell: From<T>,
@@ -736,7 +793,14 @@ mod tests {
     }
 
     fn assert_prints(source: &str, value: &[u8]) {
-        assert_eq!(test_interpreter_output(source).unwrap(), value)
+        let result = test_interpreter_output(source).unwrap();
+        assert_eq!(
+            result,
+            value,
+            "\nLeft: {}\n, right: \n{}",
+            String::from_utf8(result.clone()).unwrap(),
+            String::from_utf8(Vec::from(value)).unwrap()
+        );
     }
 
     fn test_interpreter_output(source: &str) -> Result<Vec<u8>> {

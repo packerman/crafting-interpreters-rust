@@ -3,7 +3,7 @@ use std::{fmt::Display, sync::Arc};
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
-    pub lexeme: Arc<str>,
+    lexeme: Arc<str>,
     pub line: usize,
 }
 
@@ -12,8 +12,8 @@ impl Token {
         Self { kind, lexeme, line }
     }
 
-    pub fn lexeme(&self) -> Arc<str> {
-        Arc::clone(&self.lexeme)
+    pub fn lexeme(&self) -> &Arc<str> {
+        &self.lexeme
     }
 }
 
