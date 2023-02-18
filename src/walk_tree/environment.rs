@@ -49,8 +49,8 @@ impl Environment {
         }
     }
 
-    pub fn get_at(&self, distance: usize, name: &Token) -> Cell {
-        self.ancestor(distance).borrow().values[name.lexeme()].to_owned()
+    pub fn get_at(&self, distance: usize, name: &Arc<str>) -> Cell {
+        self.ancestor(distance).borrow().values[name].to_owned()
     }
 
     pub fn assign(&mut self, name: &Token, value: Cell) -> Result<(), RuntimeError> {

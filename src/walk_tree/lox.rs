@@ -91,7 +91,7 @@ where
         }
 
         let mut resolver = Resolver::new(&mut self.interpreter, self.error_reporter);
-        resolver.resolve_stmts(&statements);
+        resolver.resolve(&statements);
         if self.error_reporter.had_error() {
             return;
         }

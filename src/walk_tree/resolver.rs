@@ -23,10 +23,8 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    pub fn resolve_stmts(&mut self, stmts: &[Box<Stmt>]) {
-        for stmt in stmts {
-            self.resolve_stmt(stmt)
-        }
+    pub fn resolve(&mut self, stmts: &[Box<Stmt>]) {
+        self.resolve_stmts(stmts)
     }
 
     fn resolve_stmt(&mut self, stmt: &Stmt) {
@@ -67,6 +65,12 @@ impl<'a> Resolver<'a> {
         self.begin_scope();
         self.resolve_stmts(stmts);
         self.end_scope();
+    }
+
+    fn resolve_stmts(&mut self, stmts: &[Box<Stmt>]) {
+        for stmt in stmts {
+            self.resolve_stmt(stmt)
+        }
     }
 
     fn begin_scope(&mut self) {

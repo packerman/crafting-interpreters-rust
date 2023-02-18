@@ -89,7 +89,7 @@ where
             Expr::Ternary(condition, then_expr, else_expr) => {
                 self.evaluate_ternary(condition, then_expr, else_expr, env)
             }
-            Expr::Variable(name) => self.evaluate_variable_expr(name, expr, env),
+            Expr::Variable(name) => self.evaluate_variable_expr(expr, name, env),
             Expr::Assignment(name, value) => self.execute_assign_expr(expr, name, value, env),
         }
     }
@@ -304,7 +304,7 @@ where
     ) -> Result<Cell, RuntimeError> {
         let callee = self.evaluate(callee, env)?;
 
-        let arguments = self.evaluate_vec(arguments, env)?;
+        let arguments = self.evaluate_exprs(arguments, env)?;
 
         let function = <Arc<dyn Callable>>::try_from(callee)?;
         if arguments.len() != function.arity() {
@@ -321,7 +321,7 @@ where
         }
     }
 
-    fn evaluate_vec(
+    fn evaluate_exprs(
         &mut self,
         exprs: &[Box<Expr>],
         env: &Arc<RefCell<Environment>>,
@@ -395,8 +395,8 @@ where
 
     fn evaluate_variable_expr(
         &self,
-        name: &Token,
         expr: &Expr,
+        name: &Token,
         env: &Arc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
         self.look_up_variable(name, expr, env)
@@ -409,7 +409,7 @@ where
         env: &Arc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
         if let Some(distance) = self.locals.get(&expr) {
-            Ok(env.borrow().get_at(*distance, name))
+            Ok(env.borrow().get_at(*distance, name.lexeme()))
         } else {
             self.globals.borrow().get(name)
         }
@@ -447,7 +447,7 @@ impl<'a, W> Resolve for Interpreter<'a, W> {
 mod tests {
     use std::{io, sync::Arc};
 
-    use crate::walk_tree::{parser::Parser, scanner::Scanner};
+    use crate::walk_tree::{parser::Parser, resolver::Resolver, scanner::Scanner};
     use anyhow::Context;
 
     use super::*;
@@ -808,6 +808,8 @@ mod tests {
         let tree = test_parse(source, &error_reporter).context("Error in parsing")?;
         let mut output = Vec::new();
         let mut interpreter = Interpreter::new_with_output(&error_reporter, &mut output);
+        let mut resolver = Resolver::new(&mut interpreter, &error_reporter);
+        resolver.resolve(&tree);
         interpreter.interpret(&tree);
         Ok(output)
     }
@@ -818,6 +820,8 @@ mod tests {
         let expr = tree[0].as_expr().unwrap();
         let mut output = io::stdout();
         let mut interpreter = Interpreter::new_with_output(&error_reporter, &mut output);
+        let mut resolver = Resolver::new(&mut interpreter, &error_reporter);
+        resolver.resolve(&tree);
         interpreter
             .evaluate_and_print(expr)
             .context("Evaluating error")
