@@ -126,10 +126,7 @@ where
         env: &Arc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow> {
         let environment = Environment::new_with_enclosing(Arc::clone(env));
-        for statement in statements {
-            self.execute(statement, &environment)?;
-        }
-        Ok(())
+        self.execute_block(statements, &environment)
     }
 
     fn execute_expression_stmt(
@@ -429,7 +426,10 @@ where
         block: &[Box<Stmt>],
         env: &Arc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow> {
-        self.execute_block_stmt(block, env)
+        for statement in block {
+            self.execute(statement, &env)?;
+        }
+        Ok(())
     }
 
     fn output(&mut self) -> &mut dyn Write {
