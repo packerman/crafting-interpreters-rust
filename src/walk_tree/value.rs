@@ -2,6 +2,7 @@ use std::{fmt::Display, rc::Rc};
 
 use super::{
     callable::{self, Callable},
+    class::{Class, Instance},
     error::RuntimeError,
     token::Token,
 };
@@ -15,6 +16,8 @@ pub enum Value {
     Number(f64),
     String(Rc<str>),
     Callable(Rc<dyn Callable>),
+    Class(Rc<Class>),
+    Instance(Instance),
 }
 
 impl PartialEq for Value {
@@ -109,11 +112,25 @@ impl TryFrom<Cell> for Rc<dyn Callable> {
     fn try_from(value: Cell) -> Result<Self, Self::Error> {
         if let Some(Value::Callable(value)) = value.0.as_deref() {
             Ok(Rc::clone(value))
+        } else if let Some(Value::Class(class)) = value.0.as_deref() {
+            Ok(callable::as_callable(Rc::clone(class)))
         } else {
             Err(RuntimeError::from(String::from(
                 "Can only call functions and classes.",
             )))
         }
+    }
+}
+
+impl From<Rc<Class>> for Cell {
+    fn from(value: Rc<Class>) -> Self {
+        Cell::from(Value::Class(value))
+    }
+}
+
+impl From<Instance> for Cell {
+    fn from(value: Instance) -> Self {
+        Cell::from(Value::Instance(value))
     }
 }
 
@@ -125,6 +142,8 @@ impl Display for Cell {
             Some(Value::Number(value)) => write!(f, "{value}"),
             Some(Value::String(value)) => write!(f, "{value}"),
             Some(Value::Callable(value)) => write!(f, "<function@{value:p}>"),
+            Some(Value::Class(value)) => write!(f, "{value}"),
+            Some(Value::Instance(value)) => write!(f, "{value}"),
         }
     }
 }

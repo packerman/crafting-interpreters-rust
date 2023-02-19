@@ -27,6 +27,13 @@ pub trait Callable: Debug {
     ) -> Result<Cell, RuntimeError>;
 }
 
+pub fn as_callable<T>(value: Rc<T>) -> Rc<dyn Callable>
+where
+    T: Callable + 'static,
+{
+    value
+}
+
 #[allow(clippy::vtable_address_comparisons)]
 pub fn ptr_eq(left: &dyn Callable, right: &dyn Callable) -> bool {
     ptr::eq(left, right)

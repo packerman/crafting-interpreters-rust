@@ -1,4 +1,5 @@
 pub mod callable;
+pub mod class;
 pub mod control_flow;
 pub mod environment;
 pub mod error;

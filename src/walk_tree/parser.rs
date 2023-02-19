@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use super::{
     error::ErrorReporter,
-    expr::Expr,
+    expr::{Expr, Function},
     token::{Token, TokenKind},
     value::Cell,
 };
@@ -64,9 +64,11 @@ impl<'a> Parser<'a> {
     }
 
     fn try_declaration(&mut self) -> Option<Box<Stmt>> {
-        if self.match_single(&TokenKind::Fun) {
-            self.function_declaration("function")
-        } else if self.match_single(&TokenKind::Var) {
+        if self.match_only(&TokenKind::Class) {
+            self.class_declaration()
+        } else if self.match_only(&TokenKind::Fun) {
+            self.function_declaration()
+        } else if self.match_only(&TokenKind::Var) {
             self.var_declaration()
         } else {
             self.statement()
@@ -74,15 +76,15 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> Option<Box<Stmt>> {
-        if self.match_single(&TokenKind::For) {
+        if self.match_only(&TokenKind::For) {
             self.for_statement()
-        } else if self.match_single(&TokenKind::If) {
+        } else if self.match_only(&TokenKind::If) {
             self.if_statement()
-        } else if self.match_single(&TokenKind::Return) {
+        } else if self.match_only(&TokenKind::Return) {
             self.return_stmt()
-        } else if self.match_single(&TokenKind::While) {
+        } else if self.match_only(&TokenKind::While) {
             self.while_statement()
-        } else if self.match_single(&TokenKind::LeftBrace) {
+        } else if self.match_only(&TokenKind::LeftBrace) {
             self.block()
         } else {
             self.expression_statement()
@@ -91,9 +93,9 @@ impl<'a> Parser<'a> {
 
     fn for_statement(&mut self) -> Option<Box<Stmt>> {
         self.consume(&TokenKind::LeftParen, || "Expect '(' after 'for'.".into())?;
-        let initializer = if self.match_single(&TokenKind::Semicolon) {
+        let initializer = if self.match_only(&TokenKind::Semicolon) {
             None
-        } else if self.match_single(&TokenKind::Var) {
+        } else if self.match_only(&TokenKind::Var) {
             Some(self.var_declaration()?)
         } else {
             Some(self.expression_statement()?)
@@ -138,7 +140,7 @@ impl<'a> Parser<'a> {
         })?;
 
         let then_branch = self.statement()?;
-        let else_branch = if self.match_single(&TokenKind::Else) {
+        let else_branch = if self.match_only(&TokenKind::Else) {
             Some(self.statement()?)
         } else {
             None
@@ -172,7 +174,7 @@ impl<'a> Parser<'a> {
                 "Expect variable name.".to_string()
             })?
             .to_owned();
-        let initializer = if self.match_single(&TokenKind::Equal) {
+        let initializer = if self.match_only(&TokenKind::Equal) {
             self.expression()
         } else {
             None
@@ -201,15 +203,40 @@ impl<'a> Parser<'a> {
         Some(Box::new(Stmt::Expr(expr)))
     }
 
-    fn function_declaration(&mut self, kind: &str) -> Option<Box<Stmt>> {
+    fn class_declaration(&mut self) -> Option<Box<Stmt>> {
+        let name = self
+            .consume(&TokenKind::Identifier, || "Expect class name.".into())?
+            .to_owned();
+        self.consume(&TokenKind::LeftBrace, || {
+            "Expect '{' before class body.".into()
+        })?;
+        let mut methods = Vec::new();
+        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            methods.push(self.function("method")?);
+        }
+        self.consume(&TokenKind::RightBrace, || {
+            "Expect '}' after class body.".into()
+        })?;
+        Some(Box::new(Stmt::Class {
+            name,
+            methods: Box::from(methods),
+        }))
+    }
+
+    fn function_declaration(&mut self) -> Option<Box<Stmt>> {
+        let function = self.function("function")?;
+        let declaration = Stmt::VarDeclaration {
+            name: function.name()?.clone(),
+            initializer: Some(Box::new(Expr::from(function))),
+        };
+        Some(Box::new(declaration))
+    }
+
+    fn function(&mut self, kind: &str) -> Option<Function> {
         let name = self
             .consume(&TokenKind::Identifier, || format!("Expect {kind} name."))?
             .clone();
-        let function = Box::new(self.function_expression(kind, Some(name.clone()))?);
-        Some(Box::new(Stmt::VarDeclaration {
-            name,
-            initializer: Some(function),
-        }))
+        self.function_literal(kind, Some(name.clone()))
     }
 
     fn block(&mut self) -> Option<Box<Stmt>> {
@@ -228,7 +255,7 @@ impl<'a> Parser<'a> {
 
     fn assigment(&mut self) -> Option<Box<Expr>> {
         let expr = self.ternary()?;
-        if self.match_single(&TokenKind::Equal) {
+        if self.match_only(&TokenKind::Equal) {
             let equals = self.previous().to_owned();
             let value = self.assigment()?;
             if let Expr::Variable(name) = expr.as_ref() {
@@ -246,7 +273,7 @@ impl<'a> Parser<'a> {
 
     fn ternary(&mut self) -> Option<Box<Expr>> {
         let expr = self.or()?;
-        if self.match_single(&TokenKind::QuestionMark) {
+        if self.match_only(&TokenKind::QuestionMark) {
             let then_expr = self.expression()?;
             self.consume(&TokenKind::Colon, || "Expect ':'.".into());
             let else_expr = self.expression()?;
@@ -274,7 +301,7 @@ impl<'a> Parser<'a> {
     {
         let mut expr = operand(self)?;
 
-        while self.match_single(token_kind) {
+        while self.match_only(token_kind) {
             let operator = self.previous().to_owned();
             let right = operand(self)?;
             expr = Box::new(Expr::Logical {
@@ -333,7 +360,7 @@ impl<'a> Parser<'a> {
     fn call(&mut self) -> Option<Box<Expr>> {
         let mut expr = self.primary()?;
         loop {
-            if self.match_single(&TokenKind::LeftParen) {
+            if self.match_only(&TokenKind::LeftParen) {
                 expr = self.finish_call(expr)?;
             } else {
                 break;
@@ -350,7 +377,7 @@ impl<'a> Parser<'a> {
                     self.error::<()>(self.peek(), "Can't have more than 255 arguments.");
                 }
                 arguments.push(self.expression()?);
-                if !self.match_single(&TokenKind::Comma) {
+                if !self.match_only(&TokenKind::Comma) {
                     break;
                 }
             }
@@ -369,19 +396,19 @@ impl<'a> Parser<'a> {
     }
 
     fn primary(&mut self) -> Option<Box<Expr>> {
-        let expr = if self.match_single(&TokenKind::False) {
+        let expr = if self.match_only(&TokenKind::False) {
             Expr::from(false)
-        } else if self.match_single(&TokenKind::True) {
+        } else if self.match_only(&TokenKind::True) {
             Expr::from(true)
-        } else if self.match_single(&TokenKind::Nil) {
+        } else if self.match_only(&TokenKind::Nil) {
             Expr::from(())
         } else if let Some(literal) = self.literal() {
             literal
-        } else if self.match_single(&TokenKind::Identifier) {
+        } else if self.match_only(&TokenKind::Identifier) {
             Expr::Variable(self.previous().to_owned())
-        } else if self.match_single(&TokenKind::Fun) {
+        } else if self.match_only(&TokenKind::Fun) {
             self.anonymous_function()?
-        } else if self.match_single(&TokenKind::LeftParen) {
+        } else if self.match_only(&TokenKind::LeftParen) {
             let expr = self.expression()?;
             self.consume(&TokenKind::RightParen, || {
                 "Expect ')' after expression.".into()
@@ -410,10 +437,10 @@ impl<'a> Parser<'a> {
     }
 
     fn anonymous_function(&mut self) -> Option<Expr> {
-        self.function_expression("function", None)
+        self.function_literal("function", None).map(Expr::from)
     }
 
-    fn function_expression(&mut self, kind: &str, name: Option<Token>) -> Option<Expr> {
+    fn function_literal(&mut self, kind: &str, name: Option<Token>) -> Option<Function> {
         self.consume(&TokenKind::LeftParen, || {
             format!("Expect '(' after {kind} name.")
         })?;
@@ -430,7 +457,7 @@ impl<'a> Parser<'a> {
                     })?
                     .to_owned(),
                 );
-                if !self.match_single(&TokenKind::Comma) {
+                if !self.match_only(&TokenKind::Comma) {
                     break;
                 }
             }
@@ -442,11 +469,7 @@ impl<'a> Parser<'a> {
             format!("Expect '{{' before {kind} body.")
         })?;
         let body = self.stmt_vec()?;
-        Some(Expr::Function {
-            name,
-            parameters: Rc::from(parameters),
-            body,
-        })
+        Some(Function::new(name, Rc::from(parameters), body))
     }
 
     fn match_any(&mut self, kinds: &[TokenKind]) -> bool {
@@ -459,7 +482,7 @@ impl<'a> Parser<'a> {
         false
     }
 
-    fn match_single(&mut self, kind: &TokenKind) -> bool {
+    fn match_only(&mut self, kind: &TokenKind) -> bool {
         if self.check(kind) {
             self.advance();
             true

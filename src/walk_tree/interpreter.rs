@@ -8,6 +8,7 @@ use crate::walk_tree::error::RuntimeError;
 use crate::walk_tree::stmt::Stmt;
 
 use super::callable::{Callable, ExecutionContext};
+use super::class::Class;
 use super::control_flow::ControlFlow;
 use super::environment::Environment;
 use super::function::Function;
@@ -15,7 +16,7 @@ use super::native;
 use super::resolver::Resolve;
 use super::{
     error::ErrorReporter,
-    expr::Expr,
+    expr::{Expr, Function as FunctionExpr},
     token::{Token, TokenKind},
     value::{self, Cell},
 };
@@ -75,15 +76,11 @@ where
                 operator,
                 right,
             } => self.evaluate_binary(left, operator, right, env),
-            Expr::Function {
-                name,
-                parameters,
-                body,
-            } => {
+            Expr::Function(function) => {
                 let function = Function::init(
-                    name.to_owned(),
-                    parameters.to_owned(),
-                    body.to_owned(),
+                    function.name().cloned(),
+                    function.parameters().to_owned(),
+                    function.body().to_owned(),
                     Rc::clone(env),
                 );
                 Ok(Cell::from(function))
@@ -135,6 +132,7 @@ where
             Stmt::VarDeclaration { name, initializer } => {
                 self.execute_var_stmt(name, initializer.as_deref(), env)
             }
+            Stmt::Class { name, methods } => self.execute_class_stmt(name, methods, env),
         }
     }
 
@@ -428,6 +426,19 @@ where
         } else {
             self.globals.borrow().get(name)
         }
+    }
+
+    fn execute_class_stmt(
+        &self,
+        name: &Token,
+        _methods: &[FunctionExpr],
+        env: &RefCell<Environment>,
+    ) -> Result<(), ControlFlow> {
+        env.borrow_mut()
+            .define(Rc::clone(name.lexeme()), Cell::from(()));
+        let class = Class::new(Rc::clone(name.lexeme()));
+        env.borrow_mut().assign(name, Cell::from(class))?;
+        Ok(())
     }
 }
 
@@ -800,6 +811,18 @@ mod tests {
             }
         "#,
             b"global\nglobal\n",
+        )
+    }
+
+    #[test]
+    fn class_works() {
+        assert_prints(
+            r#"
+            class Bagel {}
+            var bagel = Bagel();    
+            print(bagel);
+            "#,
+            b"Bagel instance\n",
         )
     }
 

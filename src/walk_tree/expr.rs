@@ -35,11 +35,7 @@ pub enum Expr {
         operator: Token,
         right: Box<Expr>,
     },
-    Function {
-        name: Option<Token>,
-        parameters: Rc<[Token]>,
-        body: Rc<[Box<Stmt>]>,
-    },
+    Function(Function),
 }
 
 impl Expr {
@@ -49,6 +45,39 @@ impl Expr {
             operator,
             right,
         }
+    }
+
+    pub fn function(name: Option<Token>, parameters: Rc<[Token]>, body: Rc<[Box<Stmt>]>) -> Self {
+        Self::Function(Function::new(name, parameters, body))
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Function {
+    name: Option<Token>,
+    parameters: Rc<[Token]>,
+    body: Rc<[Box<Stmt>]>,
+}
+
+impl Function {
+    pub fn new(name: Option<Token>, parameters: Rc<[Token]>, body: Rc<[Box<Stmt>]>) -> Self {
+        Self {
+            name,
+            parameters,
+            body,
+        }
+    }
+
+    pub fn name(&self) -> Option<&Token> {
+        self.name.as_ref()
+    }
+
+    pub fn parameters(&self) -> &Rc<[Token]> {
+        &self.parameters
+    }
+
+    pub fn body(&self) -> &Rc<[Box<Stmt>]> {
+        &self.body
     }
 }
 
@@ -73,6 +102,12 @@ impl From<Rc<str>> for Expr {
 impl From<()> for Expr {
     fn from(_value: ()) -> Self {
         Self::Literal(Cell::from(()))
+    }
+}
+
+impl From<Function> for Expr {
+    fn from(value: Function) -> Self {
+        Self::Function(value)
     }
 }
 

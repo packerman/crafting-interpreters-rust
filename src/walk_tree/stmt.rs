@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::walk_tree::expr::Expr;
 
-use super::token::Token;
+use super::{expr::Function, token::Token};
 
 #[derive(Debug, PartialEq)]
 pub enum Stmt {
@@ -24,6 +24,10 @@ pub enum Stmt {
     VarDeclaration {
         name: Token,
         initializer: Option<Box<Expr>>,
+    },
+    Class {
+        name: Token,
+        methods: Box<[Function]>,
     },
 }
 

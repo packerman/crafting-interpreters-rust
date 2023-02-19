@@ -1,6 +1,11 @@
 use std::{collections::HashMap, rc::Rc};
 
-use super::{error::ErrorReporter, expr::Expr, stmt::Stmt, token::Token};
+use super::{
+    error::ErrorReporter,
+    expr::{Expr, Function},
+    stmt::Stmt,
+    token::Token,
+};
 
 pub trait Resolve {
     fn resolve(&mut self, expr: *const Expr, depth: usize);
@@ -44,6 +49,7 @@ impl<'a> Resolver<'a> {
             Stmt::VarDeclaration { name, initializer } => {
                 self.resolve_var_stmt(name, initializer.as_deref())
             }
+            Stmt::Class { name, methods } => self.resolve_class_stmt(name, methods),
         }
     }
 
@@ -73,11 +79,7 @@ impl<'a> Resolver<'a> {
                 operator: _,
                 right,
             } => self.resolve_logical_expression(left, right),
-            Expr::Function {
-                name,
-                parameters: params,
-                body,
-            } => self.resolve_function_expr(name.as_ref(), params, body),
+            Expr::Function(function) => self.resolve_function_expr(function),
         }
     }
 
@@ -149,17 +151,16 @@ impl<'a> Resolver<'a> {
         self.resolve_local(expr, name);
     }
 
-    fn resolve_function_expr(
-        &mut self,
-        name: Option<&Token>,
-        params: &[Token],
-        body: &[Box<Stmt>],
-    ) {
-        if let Some(name) = name {
+    fn resolve_function_expr(&mut self, function: &Function) {
+        if let Some(name) = function.name() {
             self.declare(name);
             self.define(name)
         }
-        self.resolve_function(params, body, FunctionType::Function);
+        self.resolve_function(
+            function.parameters(),
+            function.body(),
+            FunctionType::Function,
+        );
     }
 
     fn resolve_function(
@@ -244,6 +245,11 @@ impl<'a> Resolver<'a> {
         self.resolve_expr(condition);
         self.resolve_expr(then_expr);
         self.resolve_expr(else_expr)
+    }
+
+    fn resolve_class_stmt(&mut self, name: &Token, _methods: &[Function]) {
+        self.declare(name);
+        self.define(name)
     }
 }
 
