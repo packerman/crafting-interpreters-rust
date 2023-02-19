@@ -122,7 +122,7 @@ impl<'a> Parser<'a> {
                 Box::new(Stmt::Expr(increment)),
             ])));
         }
-        body = Box::new(Stmt::While(condition, body));
+        body = Box::new(Stmt::While { condition, body });
         if let Some(initializer) = initializer {
             body = Box::new(Stmt::Block(Rc::new([initializer, body])));
         }
@@ -143,7 +143,11 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
-        Some(Box::new(Stmt::If(condition, then_branch, else_branch)))
+        Some(Box::new(Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        }))
     }
 
     fn return_stmt(&mut self) -> Option<Box<Stmt>> {
@@ -156,7 +160,10 @@ impl<'a> Parser<'a> {
         self.consume(&TokenKind::Semicolon, || {
             "Expect ';' after return value.".to_string()
         })?;
-        Some(Box::new(Stmt::Return(keyword, value)))
+        Some(Box::new(Stmt::Return {
+            keyword,
+            expr: value,
+        }))
     }
 
     fn var_declaration(&mut self) -> Option<Box<Stmt>> {
@@ -173,7 +180,7 @@ impl<'a> Parser<'a> {
         self.consume(&TokenKind::Semicolon, || {
             "Expect ';' after variable declaration.".to_string()
         })?;
-        Some(Box::new(Stmt::VarDeclaration(name, initializer)))
+        Some(Box::new(Stmt::VarDeclaration { name, initializer }))
     }
 
     fn while_statement(&mut self) -> Option<Box<Stmt>> {
@@ -183,7 +190,7 @@ impl<'a> Parser<'a> {
             "Expect ')' after condition.".into()
         })?;
         let body = self.statement()?;
-        Some(Box::new(Stmt::While(condition, body)))
+        Some(Box::new(Stmt::While { condition, body }))
     }
 
     fn expression_statement(&mut self) -> Option<Box<Stmt>> {
@@ -199,7 +206,10 @@ impl<'a> Parser<'a> {
             .consume(&TokenKind::Identifier, || format!("Expect {kind} name."))?
             .clone();
         let function = Box::new(self.function_expression(kind, Some(name.clone()))?);
-        Some(Box::new(Stmt::VarDeclaration(name, Some(function))))
+        Some(Box::new(Stmt::VarDeclaration {
+            name,
+            initializer: Some(function),
+        }))
     }
 
     fn block(&mut self) -> Option<Box<Stmt>> {
@@ -222,7 +232,10 @@ impl<'a> Parser<'a> {
             let equals = self.previous().to_owned();
             let value = self.assigment()?;
             if let Expr::Variable(name) = expr.as_ref() {
-                Some(Box::new(Expr::Assignment(name.to_owned(), value)))
+                Some(Box::new(Expr::Assignment {
+                    name: name.to_owned(),
+                    value,
+                }))
             } else {
                 self.error(&equals, "Invalid assignment target.")
             }
@@ -237,7 +250,11 @@ impl<'a> Parser<'a> {
             let then_expr = self.expression()?;
             self.consume(&TokenKind::Colon, || "Expect ':'.".into());
             let else_expr = self.expression()?;
-            Some(Box::new(Expr::Ternary(expr, then_expr, else_expr)))
+            Some(Box::new(Expr::Ternary {
+                condition: expr,
+                then_expr,
+                else_expr,
+            }))
         } else {
             Some(expr)
         }
@@ -260,7 +277,11 @@ impl<'a> Parser<'a> {
         while self.match_single(token_kind) {
             let operator = self.previous().to_owned();
             let right = operand(self)?;
-            expr = Box::new(Expr::Logical(expr, operator, right));
+            expr = Box::new(Expr::Logical {
+                left: expr,
+                operator,
+                right,
+            });
         }
         Some(expr)
     }
@@ -287,7 +308,7 @@ impl<'a> Parser<'a> {
     {
         let mut expr = operand(self)?;
         while self.match_any(operators) {
-            expr = Box::new(Expr::Binary(
+            expr = Box::new(Expr::binary(
                 expr,
                 self.previous().to_owned(),
                 operand(self)?,
@@ -300,7 +321,10 @@ impl<'a> Parser<'a> {
         if self.match_any(&Self::UNARY_OPERATORS) {
             let operator = self.previous().to_owned();
             let right = self.unary()?;
-            Some(Box::new(Expr::Unary(operator, right)))
+            Some(Box::new(Expr::Unary {
+                operator,
+                operand: right,
+            }))
         } else {
             self.call()
         }
@@ -337,7 +361,11 @@ impl<'a> Parser<'a> {
             })?
             .to_owned();
 
-        Some(Box::new(Expr::Call(callee, paren, Box::from(arguments))))
+        Some(Box::new(Expr::Call {
+            callee,
+            paren,
+            arguments: Box::from(arguments),
+        }))
     }
 
     fn primary(&mut self) -> Option<Box<Expr>> {
@@ -414,7 +442,11 @@ impl<'a> Parser<'a> {
             format!("Expect '{{' before {kind} body.")
         })?;
         let body = self.stmt_vec()?;
-        Some(Expr::Function(name, Rc::from(parameters), body))
+        Some(Expr::Function {
+            name,
+            parameters: Rc::from(parameters),
+            body,
+        })
     }
 
     fn match_any(&mut self, kinds: &[TokenKind]) -> bool {
@@ -519,7 +551,7 @@ mod tests {
     fn parsing_expressions_works() {
         assert_eq!(
             test_parse_expr("2+2").unwrap().as_ref(),
-            &Expr::Binary(
+            &Expr::binary(
                 Box::new(Expr::from(2.0)),
                 Token::new(TokenKind::Plus, "+".into(), 1),
                 Box::new(Expr::from(2.0))
@@ -527,10 +559,10 @@ mod tests {
         );
         assert_eq!(
             test_parse_expr("1+2*3").unwrap().as_ref(),
-            &Expr::Binary(
+            &Expr::binary(
                 Box::new(Expr::from(1.0)),
                 Token::new(TokenKind::Plus, "+".into(), 1),
-                Box::new(Expr::Binary(
+                Box::new(Expr::binary(
                     Box::new(Expr::from(2.0)),
                     Token::new(TokenKind::Star, "*".into(), 1),
                     Box::new(Expr::from(3.0))
@@ -539,8 +571,8 @@ mod tests {
         );
         assert_eq!(
             test_parse_expr("(1+2)*3").unwrap().as_ref(),
-            &Expr::Binary(
-                Box::new(Expr::Grouping(Box::new(Expr::Binary(
+            &Expr::binary(
+                Box::new(Expr::Grouping(Box::new(Expr::binary(
                     Box::new(Expr::from(1.0)),
                     Token::new(TokenKind::Plus, "+".into(), 1),
                     Box::new(Expr::from(2.0))
@@ -551,8 +583,8 @@ mod tests {
         );
         assert_eq!(
             test_parse_expr("1 + 2 + 3").unwrap().as_ref(),
-            &Expr::Binary(
-                Box::new(Expr::Binary(
+            &Expr::binary(
+                Box::new(Expr::binary(
                     Box::new(Expr::from(1.0)),
                     Token::new(TokenKind::Plus, "+".into(), 1),
                     Box::new(Expr::from(2.0))
@@ -567,7 +599,7 @@ mod tests {
     fn parsing_comperison_works() {
         assert_eq!(
             test_parse_expr("2 < 3").unwrap().as_ref(),
-            &Expr::Binary(
+            &Expr::binary(
                 Box::new(Expr::from(2.0)),
                 Token::new(TokenKind::Less, "<".into(), 1),
                 Box::new(Expr::from(3.0))
@@ -579,15 +611,15 @@ mod tests {
     fn parsing_ternary_works() {
         assert_eq!(
             test_parse_expr("2 < 3 ? 4 : 5").unwrap().as_ref(),
-            &Expr::Ternary(
-                Box::new(Expr::Binary(
+            &Expr::Ternary {
+                condition: Box::new(Expr::binary(
                     Box::new(Expr::from(2.0)),
                     Token::new(TokenKind::Less, "<".into(), 1),
                     Box::new(Expr::from(3.0))
                 )),
-                Box::new(Expr::from(4.0)),
-                Box::new(Expr::from(5.0))
-            )
+                then_expr: Box::new(Expr::from(4.0)),
+                else_expr: Box::new(Expr::from(5.0))
+            }
         );
     }
 
@@ -595,14 +627,14 @@ mod tests {
     fn assignment_has_lower_predence_than_ternary() {
         assert_eq!(
             test_parse_expr("a = 3 ? 4 : 5").unwrap().as_ref(),
-            &Expr::Assignment(
-                Token::new(TokenKind::Identifier, "a".into(), 1),
-                Box::new(Expr::Ternary(
-                    Box::new(Expr::from(3.0)),
-                    Box::new(Expr::from(4.0)),
-                    Box::new(Expr::from(5.0))
-                ))
-            )
+            &Expr::Assignment {
+                name: Token::new(TokenKind::Identifier, "a".into(), 1),
+                value: Box::new(Expr::Ternary {
+                    condition: Box::new(Expr::from(3.0)),
+                    then_expr: Box::new(Expr::from(4.0)),
+                    else_expr: Box::new(Expr::from(5.0))
+                })
+            }
         );
     }
 

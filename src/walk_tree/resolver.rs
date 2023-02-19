@@ -31,12 +31,17 @@ impl<'a> Resolver<'a> {
         match stmt {
             Stmt::Block(stmts) => self.resolve_block_stmt(stmts),
             Stmt::Expr(expression) => self.resolve_expression_stmt(expression),
-            Stmt::If(condition, then_branch, else_branch) => {
-                self.resolve_if_stmt(condition, then_branch, else_branch.as_deref())
-            }
-            Stmt::Return(keyword, value) => self.resolve_return_stmt(keyword, value.as_deref()),
-            Stmt::While(condition, body) => self.resolve_while_stmt(condition, body),
-            Stmt::VarDeclaration(name, initializer) => {
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => self.resolve_if_stmt(condition, then_branch, else_branch.as_deref()),
+            Stmt::Return {
+                keyword,
+                expr: value,
+            } => self.resolve_return_stmt(keyword, value.as_deref()),
+            Stmt::While { condition, body } => self.resolve_while_stmt(condition, body),
+            Stmt::VarDeclaration { name, initializer } => {
                 self.resolve_var_stmt(name, initializer.as_deref())
             }
         }
@@ -44,20 +49,35 @@ impl<'a> Resolver<'a> {
 
     fn resolve_expr(&mut self, expr: &Expr) {
         match expr {
-            Expr::Binary(left, _, right) => self.resolve_binary_expr(left, right),
-            Expr::Call(callee, _, arguments) => self.resolve_call_expr(callee, arguments),
-            Expr::Unary(_, right) => self.resolve_unary_expr(right),
+            Expr::Binary { left, right, .. } => self.resolve_binary_expr(left, right),
+            Expr::Call {
+                callee,
+                paren: _,
+                arguments,
+            } => self.resolve_call_expr(callee, arguments),
+            Expr::Unary {
+                operator: _,
+                operand: right,
+            } => self.resolve_unary_expr(right),
             Expr::Literal(_) => {}
             Expr::Grouping(expression) => self.resolve_grouping_expr(expression),
-            Expr::Ternary(condition, then_expr, else_expr) => {
-                self.resolve_ternary_expr(condition, then_expr, else_expr)
-            }
+            Expr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+            } => self.resolve_ternary_expr(condition, then_expr, else_expr),
             Expr::Variable(name) => self.resolve_variable_expr(expr, name),
-            Expr::Assignment(name, value) => self.resolve_assign_expr(expr, name, value),
-            Expr::Logical(left, _, right) => self.resolve_logical_expression(left, right),
-            Expr::Function(name, params, body) => {
-                self.resolve_function_expr(name.as_ref(), params, body)
-            }
+            Expr::Assignment { name, value } => self.resolve_assign_expr(expr, name, value),
+            Expr::Logical {
+                left,
+                operator: _,
+                right,
+            } => self.resolve_logical_expression(left, right),
+            Expr::Function {
+                name,
+                parameters: params,
+                body,
+            } => self.resolve_function_expr(name.as_ref(), params, body),
         }
     }
 

@@ -8,10 +8,23 @@ use super::token::Token;
 pub enum Stmt {
     Block(Rc<[Box<Stmt>]>),
     Expr(Box<Expr>),
-    If(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>),
-    Return(Token, Option<Box<Expr>>),
-    While(Box<Expr>, Box<Stmt>),
-    VarDeclaration(Token, Option<Box<Expr>>),
+    If {
+        condition: Box<Expr>,
+        then_branch: Box<Stmt>,
+        else_branch: Option<Box<Stmt>>,
+    },
+    Return {
+        keyword: Token,
+        expr: Option<Box<Expr>>,
+    },
+    While {
+        condition: Box<Expr>,
+        body: Box<Stmt>,
+    },
+    VarDeclaration {
+        name: Token,
+        initializer: Option<Box<Expr>>,
+    },
 }
 
 impl Stmt {

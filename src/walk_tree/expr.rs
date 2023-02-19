@@ -2,20 +2,54 @@ use std::rc::Rc;
 
 use super::{stmt::Stmt, token::Token, value::Cell};
 
-pub type Operator = Token;
-
 #[derive(Debug, PartialEq)]
 pub enum Expr {
-    Binary(Box<Expr>, Operator, Box<Expr>),
-    Call(Box<Expr>, Token, Box<[Box<Expr>]>),
-    Unary(Operator, Box<Expr>),
+    Binary {
+        left: Box<Expr>,
+        operator: Token,
+        right: Box<Expr>,
+    },
+    Call {
+        callee: Box<Expr>,
+        paren: Token,
+        arguments: Box<[Box<Expr>]>,
+    },
+    Unary {
+        operator: Token,
+        operand: Box<Expr>,
+    },
     Literal(Cell),
     Grouping(Box<Expr>),
-    Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
+    Ternary {
+        condition: Box<Expr>,
+        then_expr: Box<Expr>,
+        else_expr: Box<Expr>,
+    },
     Variable(Token),
-    Assignment(Token, Box<Expr>),
-    Logical(Box<Expr>, Token, Box<Expr>),
-    Function(Option<Token>, Rc<[Token]>, Rc<[Box<Stmt>]>),
+    Assignment {
+        name: Token,
+        value: Box<Expr>,
+    },
+    Logical {
+        left: Box<Expr>,
+        operator: Token,
+        right: Box<Expr>,
+    },
+    Function {
+        name: Option<Token>,
+        parameters: Rc<[Token]>,
+        body: Rc<[Box<Stmt>]>,
+    },
+}
+
+impl Expr {
+    pub fn binary(left: Box<Expr>, operator: Token, right: Box<Expr>) -> Self {
+        Self::Binary {
+            left,
+            operator,
+            right,
+        }
+    }
 }
 
 impl From<bool> for Expr {

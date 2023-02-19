@@ -69,9 +69,17 @@ where
         match expr {
             Expr::Literal(literal) => self.evaluate_literal(literal),
             Expr::Grouping(expr) => self.evaluate(expr, env),
-            Expr::Unary(operator, operand) => self.evaluate_unary(operator, operand, env),
-            Expr::Binary(left, operator, right) => self.evaluate_binary(left, operator, right, env),
-            Expr::Function(name, parameters, body) => {
+            Expr::Unary { operator, operand } => self.evaluate_unary(operator, operand, env),
+            Expr::Binary {
+                left,
+                operator,
+                right,
+            } => self.evaluate_binary(left, operator, right, env),
+            Expr::Function {
+                name,
+                parameters,
+                body,
+            } => {
                 let function = Function::init(
                     name.to_owned(),
                     parameters.to_owned(),
@@ -80,17 +88,23 @@ where
                 );
                 Ok(Cell::from(function))
             }
-            Expr::Call(callee, paren, arguments) => {
-                self.evaluate_call(callee, paren, arguments, env)
-            }
-            Expr::Logical(left, operator, right) => {
-                self.evaluate_logical(left, operator, right, env)
-            }
-            Expr::Ternary(condition, then_expr, else_expr) => {
-                self.evaluate_ternary(condition, then_expr, else_expr, env)
-            }
+            Expr::Call {
+                callee,
+                paren,
+                arguments,
+            } => self.evaluate_call(callee, paren, arguments, env),
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => self.evaluate_logical(left, operator, right, env),
+            Expr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+            } => self.evaluate_ternary(condition, then_expr, else_expr, env),
             Expr::Variable(name) => self.evaluate_variable_expr(expr, name, env),
-            Expr::Assignment(name, value) => self.execute_assign_expr(expr, name, value, env),
+            Expr::Assignment { name, value } => self.execute_assign_expr(expr, name, value, env),
         }
     }
 
@@ -109,12 +123,16 @@ where
         match stmt {
             Stmt::Block(stmts) => self.execute_block_stmt(stmts, env),
             Stmt::Expr(expr) => self.execute_expression_stmt(expr, env),
-            Stmt::If(condition, then_branch, else_branch) => {
-                self.execute_if_stmt(condition, then_branch, else_branch.as_deref(), env)
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => self.execute_if_stmt(condition, then_branch, else_branch.as_deref(), env),
+            Stmt::Return { keyword, expr } => {
+                self.execute_return_stmt(keyword, expr.as_deref(), env)
             }
-            Stmt::Return(keyword, expr) => self.execute_return_stmt(keyword, expr.as_deref(), env),
-            Stmt::While(condition, body) => self.execute_while_stmt(condition, body, env),
-            Stmt::VarDeclaration(name, initializer) => {
+            Stmt::While { condition, body } => self.execute_while_stmt(condition, body, env),
+            Stmt::VarDeclaration { name, initializer } => {
                 self.execute_var_stmt(name, initializer.as_deref(), env)
             }
         }
