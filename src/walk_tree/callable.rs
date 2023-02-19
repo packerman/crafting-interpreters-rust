@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt::Debug, ptr, sync::Arc};
+use std::{cell::RefCell, fmt::Debug, io::Write, ptr, rc::Rc};
 
 use super::{
     control_flow::ControlFlow, environment::Environment, error::RuntimeError, stmt::Stmt,
@@ -6,13 +6,15 @@ use super::{
 };
 
 pub trait ExecutionContext {
-    fn globals(&self) -> Arc<RefCell<Environment>>;
+    fn globals(&self) -> Rc<RefCell<Environment>>;
 
     fn execute_block(
         &mut self,
         block: &[Box<Stmt>],
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow>;
+
+    fn output(&mut self) -> &mut dyn Write;
 }
 
 pub trait Callable: Debug {

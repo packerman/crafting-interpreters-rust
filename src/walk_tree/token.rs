@@ -1,19 +1,19 @@
-use std::{fmt::Display, sync::Arc};
+use std::{fmt::Display, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
-    pub lexeme: Arc<str>,
+    lexeme: Rc<str>,
     pub line: usize,
 }
 
 impl Token {
-    pub fn new(kind: TokenKind, lexeme: Arc<str>, line: usize) -> Self {
+    pub fn new(kind: TokenKind, lexeme: Rc<str>, line: usize) -> Self {
         Self { kind, lexeme, line }
     }
 
-    pub fn lexeme(&self) -> Arc<str> {
-        Arc::clone(&self.lexeme)
+    pub fn lexeme(&self) -> &Rc<str> {
+        &self.lexeme
     }
 }
 
@@ -53,7 +53,7 @@ pub enum TokenKind {
     LessEqual,
 
     Identifier,
-    String(Arc<str>),
+    String(Rc<str>),
     Number(f64),
 
     And,
@@ -65,7 +65,6 @@ pub enum TokenKind {
     If,
     Nil,
     Or,
-    Print,
     Return,
     Super,
     This,
@@ -111,7 +110,6 @@ impl Display for TokenKind {
             TokenKind::If => write!(f, "if"),
             TokenKind::Nil => write!(f, "nil"),
             TokenKind::Or => write!(f, "or"),
-            TokenKind::Print => write!(f, "print"),
             TokenKind::Return => write!(f, "return"),
             TokenKind::Super => write!(f, "super"),
             TokenKind::This => write!(f, "this"),

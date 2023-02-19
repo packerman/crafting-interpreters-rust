@@ -45,7 +45,7 @@ impl ErrorReporter {
         if token.kind == TokenKind::Eof {
             self.report(token.line, " at end", message)
         } else {
-            self.report(token.line, &format!(" at '{}'", token.lexeme), message)
+            self.report(token.line, &format!(" at '{}'", token.lexeme()), message)
         }
     }
 

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use crate::walk_tree::expr::Expr;
 
@@ -6,10 +6,9 @@ use super::token::Token;
 
 #[derive(Debug, PartialEq)]
 pub enum Stmt {
-    Block(Arc<[Box<Stmt>]>),
+    Block(Rc<[Box<Stmt>]>),
     Expr(Box<Expr>),
     If(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>),
-    Print(Box<Expr>),
     Return(Token, Option<Box<Expr>>),
     While(Box<Expr>, Box<Stmt>),
     VarDeclaration(Token, Option<Box<Expr>>),

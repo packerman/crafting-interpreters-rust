@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::SystemTime};
+use std::{rc::Rc, time::SystemTime};
 
 use super::{
     callable::{Callable, ExecutionContext},
@@ -27,6 +27,30 @@ impl Callable for Clock {
 }
 
 pub fn clock() -> Cell {
-    let value: Arc<dyn Callable> = Arc::new(Clock);
+    let value: Rc<dyn Callable> = Rc::new(Clock);
+    Cell::from(value)
+}
+
+#[derive(Debug)]
+struct Print;
+
+impl Callable for Print {
+    fn arity(&self) -> usize {
+        1
+    }
+
+    fn call(
+        &self,
+        context: &mut dyn ExecutionContext,
+        arguments: &[Cell],
+    ) -> Result<Cell, RuntimeError> {
+        writeln!(context.output(), "{}", arguments[0])
+            .map_err(|err| RuntimeError::from(format!("Print error: {err}")))?;
+        Ok(Cell::from(()))
+    }
+}
+
+pub fn print() -> Cell {
+    let value: Rc<dyn Callable> = Rc::new(Print);
     Cell::from(value)
 }

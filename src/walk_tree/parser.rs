@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use super::{
     error::ErrorReporter,
@@ -25,14 +25,13 @@ impl<'a> Parser<'a> {
     const TERM_OPERATORS: [TokenKind; 2] = [TokenKind::Minus, TokenKind::Plus];
     const FACTOR_OPERATORS: [TokenKind; 2] = [TokenKind::Slash, TokenKind::Star];
     const UNARY_OPERATORS: [TokenKind; 2] = [TokenKind::Bang, TokenKind::Minus];
-    const SYNCHRONIZE: [TokenKind; 8] = [
+    const SYNCHRONIZE: [TokenKind; 7] = [
         TokenKind::Class,
         TokenKind::Fun,
         TokenKind::Var,
         TokenKind::For,
         TokenKind::If,
         TokenKind::While,
-        TokenKind::Print,
         TokenKind::Return,
     ];
 
@@ -79,8 +78,6 @@ impl<'a> Parser<'a> {
             self.for_statement()
         } else if self.match_single(&TokenKind::If) {
             self.if_statement()
-        } else if self.match_single(&TokenKind::Print) {
-            self.print_statement()
         } else if self.match_single(&TokenKind::Return) {
             self.return_stmt()
         } else if self.match_single(&TokenKind::While) {
@@ -120,14 +117,14 @@ impl<'a> Parser<'a> {
 
         let mut body = self.statement()?;
         if let Some(increment) = increment {
-            body = Box::new(Stmt::Block(Arc::new([
+            body = Box::new(Stmt::Block(Rc::new([
                 body,
                 Box::new(Stmt::Expr(increment)),
             ])));
         }
         body = Box::new(Stmt::While(condition, body));
         if let Some(initializer) = initializer {
-            body = Box::new(Stmt::Block(Arc::new([initializer, body])));
+            body = Box::new(Stmt::Block(Rc::new([initializer, body])));
         }
 
         Some(body)
@@ -147,12 +144,6 @@ impl<'a> Parser<'a> {
             None
         };
         Some(Box::new(Stmt::If(condition, then_branch, else_branch)))
-    }
-
-    fn print_statement(&mut self) -> Option<Box<Stmt>> {
-        let value = self.expression()?;
-        self.consume(&TokenKind::Semicolon, || "Expect ';' after value.".into())?;
-        Some(Box::new(Stmt::Print(value)))
     }
 
     fn return_stmt(&mut self) -> Option<Box<Stmt>> {
@@ -216,13 +207,13 @@ impl<'a> Parser<'a> {
         Some(Box::new(Stmt::Block(stmts)))
     }
 
-    fn stmt_vec(&mut self) -> Option<Arc<[Box<Stmt>]>> {
+    fn stmt_vec(&mut self) -> Option<Rc<[Box<Stmt>]>> {
         let mut statements = Vec::new();
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             statements.push(self.declaration()?);
         }
         self.consume(&TokenKind::RightBrace, || "Expect '}' after block.".into());
-        Some(Arc::from(statements))
+        Some(Rc::from(statements))
     }
 
     fn assigment(&mut self) -> Option<Box<Expr>> {
@@ -380,7 +371,7 @@ impl<'a> Parser<'a> {
         } else if let TokenKind::Number(number) = self.peek().kind {
             Some(Expr::from(number))
         } else if let TokenKind::String(string) = &self.peek().kind {
-            Some(Expr::Literal(Cell::from(Arc::clone(string))))
+            Some(Expr::Literal(Cell::from(Rc::clone(string))))
         } else {
             None
         };
@@ -423,7 +414,7 @@ impl<'a> Parser<'a> {
             format!("Expect '{{' before {kind} body.")
         })?;
         let body = self.stmt_vec()?;
-        Some(Expr::Function(name, Arc::from(parameters), body))
+        Some(Expr::Function(name, Rc::from(parameters), body))
     }
 
     fn match_any(&mut self, kinds: &[TokenKind]) -> bool {
@@ -520,7 +511,7 @@ mod tests {
         assert_eq!(test_parse_expr("nil").unwrap().as_ref(), &Expr::from(()));
         assert_eq!(
             test_parse_expr("\"abc\"").unwrap().as_ref(),
-            &Expr::from(Arc::from("abc"))
+            &Expr::from(Rc::from("abc"))
         );
     }
 
