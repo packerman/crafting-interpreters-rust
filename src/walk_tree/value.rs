@@ -113,7 +113,8 @@ impl TryFrom<Cell> for Rc<dyn Callable> {
         if let Some(Value::Callable(value)) = value.0.as_deref() {
             Ok(Rc::clone(value))
         } else if let Some(Value::Class(class)) = value.0.as_deref() {
-            Ok(callable::as_callable(Rc::clone(class)))
+            let class = Rc::clone(class);
+            Ok(class)
         } else {
             Err(RuntimeError::from(String::from(
                 "Can only call functions and classes.",
