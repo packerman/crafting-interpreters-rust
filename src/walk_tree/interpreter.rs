@@ -427,7 +427,7 @@ where
         env: &Rc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow> {
         for statement in block {
-            self.execute(statement, &env)?;
+            self.execute(statement, env)?;
         }
         Ok(())
     }
