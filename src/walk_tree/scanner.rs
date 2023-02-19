@@ -343,11 +343,11 @@ mod tests {
 
     #[test]
     fn numbers_works() {
-        let tokens = self::scan_tokens("3.14 + 1");
+        let tokens = self::scan_tokens("4.14 + 1");
         assert_eq!(
             tokens,
             vec![
-                Token::new(TokenKind::Number(3.14), "3.14".into(), 1),
+                Token::new(TokenKind::Number(4.14), "4.14".into(), 1),
                 Token::new(TokenKind::Plus, "+".into(), 1),
                 Token::new(TokenKind::Number(1.0), "1".into(), 1),
                 Token::new(TokenKind::Eof, "".into(), 1)

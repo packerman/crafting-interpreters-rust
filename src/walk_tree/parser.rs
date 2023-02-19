@@ -236,7 +236,7 @@ impl<'a> Parser<'a> {
         let name = self
             .consume(&TokenKind::Identifier, || format!("Expect {kind} name."))?
             .clone();
-        self.function_literal(kind, Some(name.clone()))
+        self.function_literal(kind, Some(name))
     }
 
     fn block(&mut self) -> Option<Box<Stmt>> {
