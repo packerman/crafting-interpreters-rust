@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, rc::Rc};
 
 use super::{error::ErrorReporter, expr::Expr, stmt::Stmt, token::Token};
 
@@ -9,7 +9,7 @@ pub trait Resolve {
 pub struct Resolver<'a> {
     interpreter: &'a mut dyn Resolve,
     error_reporter: &'a ErrorReporter,
-    scopes: Vec<HashMap<Arc<str>, bool>>,
+    scopes: Vec<HashMap<Rc<str>, bool>>,
     current_function: Option<FunctionType>,
 }
 
@@ -95,13 +95,13 @@ impl<'a> Resolver<'a> {
                 self.error_reporter
                     .token_error(name, "Already a variable with this name in this scope.");
             }
-            scope.insert(Arc::clone(name.lexeme()), false);
+            scope.insert(Rc::clone(name.lexeme()), false);
         }
     }
 
     fn define(&mut self, name: &Token) {
         if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(Arc::clone(name.lexeme()), true);
+            scope.insert(Rc::clone(name.lexeme()), true);
         }
     }
 

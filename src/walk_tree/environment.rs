@@ -1,29 +1,29 @@
 use std::{
     cell::RefCell,
     collections::HashMap,
-    sync::{Arc, Weak},
+    rc::{Rc, Weak},
 };
 
 use super::{error::RuntimeError, token::Token, value::Cell};
 
 #[derive(Debug)]
 pub struct Environment {
-    enclosing: Option<Arc<RefCell<Environment>>>,
-    values: HashMap<Arc<str>, Cell>,
+    enclosing: Option<Rc<RefCell<Environment>>>,
+    values: HashMap<Rc<str>, Cell>,
     me: Weak<RefCell<Self>>,
 }
 
 impl Environment {
-    pub fn new_global() -> Arc<RefCell<Self>> {
+    pub fn new_global() -> Rc<RefCell<Self>> {
         Self::new(None)
     }
 
-    pub fn new_with_enclosing(enclosing: Arc<RefCell<Environment>>) -> Arc<RefCell<Self>> {
+    pub fn new_with_enclosing(enclosing: Rc<RefCell<Environment>>) -> Rc<RefCell<Self>> {
         Self::new(Some(enclosing))
     }
 
-    fn new(enclosing: Option<Arc<RefCell<Environment>>>) -> Arc<RefCell<Self>> {
-        Arc::new_cyclic(|me| {
+    fn new(enclosing: Option<Rc<RefCell<Environment>>>) -> Rc<RefCell<Self>> {
+        Rc::new_cyclic(|me| {
             RefCell::new(Self {
                 enclosing,
                 values: HashMap::new(),
@@ -32,7 +32,7 @@ impl Environment {
         })
     }
 
-    pub fn define(&mut self, name: Arc<str>, value: Cell) {
+    pub fn define(&mut self, name: Rc<str>, value: Cell) {
         self.values.insert(name, value);
     }
 
@@ -49,7 +49,7 @@ impl Environment {
         }
     }
 
-    pub fn get_at(&self, distance: usize, name: &Arc<str>) -> Cell {
+    pub fn get_at(&self, distance: usize, name: &Rc<str>) -> Cell {
         self.ancestor(distance).borrow().values[name].to_owned()
     }
 
@@ -74,10 +74,10 @@ impl Environment {
             .insert(name.lexeme().to_owned(), value);
     }
 
-    fn ancestor(&self, distance: usize) -> Arc<RefCell<Environment>> {
+    fn ancestor(&self, distance: usize) -> Rc<RefCell<Environment>> {
         let mut environment = self.me.upgrade().expect("Reference exists");
         for _ in 0..distance {
-            let enclosing = Arc::clone(
+            let enclosing = Rc::clone(
                 environment
                     .borrow()
                     .enclosing

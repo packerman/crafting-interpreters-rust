@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Write;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use crate::walk_tree::error::RuntimeError;
 use crate::walk_tree::stmt::Stmt;
@@ -23,7 +23,7 @@ use super::{
 pub struct Interpreter<'a, W> {
     error_reporter: &'a ErrorReporter,
     output: W,
-    globals: Arc<RefCell<Environment>>,
+    globals: Rc<RefCell<Environment>>,
     locals: HashMap<*const Expr, usize>,
 }
 
@@ -42,17 +42,17 @@ where
         }
     }
 
-    fn define_native_functions(globals: &Arc<RefCell<Environment>>) {
+    fn define_native_functions(globals: &Rc<RefCell<Environment>>) {
         globals
             .borrow_mut()
-            .define(Arc::from("clock"), native::clock());
+            .define(Rc::from("clock"), native::clock());
         globals
             .borrow_mut()
-            .define(Arc::from("print"), native::print())
+            .define(Rc::from("print"), native::print())
     }
 
     pub fn interpret(&mut self, statements: &[Box<Stmt>]) {
-        let env = Arc::clone(&self.globals);
+        let env = Rc::clone(&self.globals);
         for statement in statements {
             if let Err(ControlFlow::RuntimeError(error)) = self.execute(statement, &env) {
                 self.error_reporter.runtime_error(&error);
@@ -64,7 +64,7 @@ where
     fn evaluate(
         &mut self,
         expr: &Expr,
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
         match expr {
             Expr::Literal(literal) => self.evaluate_literal(literal),
@@ -76,7 +76,7 @@ where
                     name.to_owned(),
                     parameters.to_owned(),
                     body.to_owned(),
-                    Arc::clone(env),
+                    Rc::clone(env),
                 );
                 Ok(Cell::from(function))
             }
@@ -95,7 +95,7 @@ where
     }
 
     pub fn evaluate_and_print(&mut self, expr: &Expr) -> Result<Cell> {
-        let result = self.evaluate(expr, &Arc::clone(&self.globals));
+        let result = self.evaluate(expr, &Rc::clone(&self.globals));
         match &result {
             Ok(result) => {
                 writeln!(self.output, "{result}")?;
@@ -105,7 +105,7 @@ where
         result.map_err(|err| anyhow!("Evaluate error: {}", err))
     }
 
-    fn execute(&mut self, stmt: &Stmt, env: &Arc<RefCell<Environment>>) -> Result<(), ControlFlow> {
+    fn execute(&mut self, stmt: &Stmt, env: &Rc<RefCell<Environment>>) -> Result<(), ControlFlow> {
         match stmt {
             Stmt::Block(stmts) => self.execute_block_stmt(stmts, env),
             Stmt::Expr(expr) => self.execute_expression_stmt(expr, env),
@@ -123,16 +123,16 @@ where
     fn execute_block_stmt(
         &mut self,
         statements: &[Box<Stmt>],
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow> {
-        let environment = Environment::new_with_enclosing(Arc::clone(env));
+        let environment = Environment::new_with_enclosing(Rc::clone(env));
         self.execute_block(statements, &environment)
     }
 
     fn execute_expression_stmt(
         &mut self,
         expr: &Expr,
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow> {
         self.evaluate(expr, env)?;
         Ok(())
@@ -143,7 +143,7 @@ where
         condition: &Expr,
         then_branch: &Stmt,
         else_branch: Option<&Stmt>,
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow> {
         if self.evaluate(condition, env)?.is_truthy() {
             self.execute(then_branch, env)?
@@ -157,7 +157,7 @@ where
         &mut self,
         _keyword: &Token,
         expr: Option<&Expr>,
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow> {
         let value = if let Some(expr) = expr {
             self.evaluate(expr, env)?
@@ -171,14 +171,14 @@ where
         &mut self,
         name: &Token,
         initializer: Option<&Expr>,
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow> {
         let value = if let Some(initializer) = initializer {
             self.evaluate(initializer, env)?
         } else {
             Cell::from(())
         };
-        env.borrow_mut().define(Arc::clone(name.lexeme()), value);
+        env.borrow_mut().define(Rc::clone(name.lexeme()), value);
         Ok(())
     }
 
@@ -186,7 +186,7 @@ where
         &mut self,
         condition: &Expr,
         body: &Stmt,
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow> {
         while self.evaluate(condition, env)?.is_truthy() {
             self.execute(body, env)?
@@ -199,7 +199,7 @@ where
         expr: *const Expr,
         name: &Token,
         value: &Expr,
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
         let value = self.evaluate(value, env)?;
         if let Some(distance) = self.locals.get(&expr) {
@@ -218,7 +218,7 @@ where
         &mut self,
         operator: &Token,
         right: &Expr,
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
         let right = self.evaluate(right, env)?;
         match operator.kind {
@@ -236,7 +236,7 @@ where
         left: &Expr,
         operator: &Token,
         right: &Expr,
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
         let left = self.evaluate(left, env)?;
         let right = self.evaluate(right, env)?;
@@ -249,8 +249,8 @@ where
                 if left.is_number() && right.is_number() {
                     value::binary_operation(|a: f64, b: f64| a + b, left, operator, right)
                 } else if left.is_string() && right.is_string() {
-                    value::binary_operation::<String, Arc<str>, Arc<str>>(
-                        |a, b| Arc::from(a + &b),
+                    value::binary_operation::<String, Rc<str>, Rc<str>>(
+                        |a, b| Rc::from(a + &b),
                         left,
                         operator,
                         right,
@@ -297,13 +297,13 @@ where
         callee: &Expr,
         paren: &Token,
         arguments: &[Box<Expr>],
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
         let callee = self.evaluate(callee, env)?;
 
         let arguments = self.evaluate_exprs(arguments, env)?;
 
-        let function = <Arc<dyn Callable>>::try_from(callee)?;
+        let function = <Rc<dyn Callable>>::try_from(callee)?;
         if arguments.len() != function.arity() {
             Err(RuntimeError::new(
                 paren.to_owned(),
@@ -321,7 +321,7 @@ where
     fn evaluate_exprs(
         &mut self,
         exprs: &[Box<Expr>],
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<Vec<Cell>, RuntimeError> {
         let mut result = Vec::with_capacity(exprs.len());
         for expr in exprs {
@@ -335,7 +335,7 @@ where
         left: &Expr,
         operator: &Token,
         right: &Expr,
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
         let left = self.evaluate(left, env)?;
         if operator.kind == TokenKind::Or {
@@ -353,7 +353,7 @@ where
         condition: &Expr,
         then_expr: &Expr,
         else_expr: &Expr,
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
         let condition = self.evaluate(condition, env)?;
         if condition.is_truthy() {
@@ -394,7 +394,7 @@ where
         &self,
         expr: &Expr,
         name: &Token,
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
         self.look_up_variable(name, expr, env)
     }
@@ -403,7 +403,7 @@ where
         &self,
         name: &Token,
         expr: *const Expr,
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
         if let Some(distance) = self.locals.get(&expr) {
             Ok(env.borrow().get_at(*distance, name.lexeme()))
@@ -417,14 +417,14 @@ impl<'a, W> ExecutionContext for Interpreter<'a, W>
 where
     W: Write,
 {
-    fn globals(&self) -> Arc<RefCell<Environment>> {
-        Arc::clone(&self.globals)
+    fn globals(&self) -> Rc<RefCell<Environment>> {
+        Rc::clone(&self.globals)
     }
 
     fn execute_block(
         &mut self,
         block: &[Box<Stmt>],
-        env: &Arc<RefCell<Environment>>,
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow> {
         for statement in block {
             self.execute(statement, &env)?;
@@ -445,7 +445,7 @@ impl<'a, W> Resolve for Interpreter<'a, W> {
 
 #[cfg(test)]
 mod tests {
-    use std::{io, sync::Arc};
+    use std::io;
 
     use crate::walk_tree::{parser::Parser, resolver::Resolver, scanner::Scanner};
     use anyhow::Context;
@@ -487,7 +487,7 @@ mod tests {
 
     #[test]
     fn concat_string_works() {
-        assert_evaluates_to::<Arc<str>>(r#""ala" + " ma " + "kota";"#, Arc::from("ala ma kota"));
+        assert_evaluates_to::<Rc<str>>(r#""ala" + " ma " + "kota";"#, Rc::from("ala ma kota"));
     }
 
     #[test]

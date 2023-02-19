@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use super::{
     error::ErrorReporter,
@@ -117,14 +117,14 @@ impl<'a> Parser<'a> {
 
         let mut body = self.statement()?;
         if let Some(increment) = increment {
-            body = Box::new(Stmt::Block(Arc::new([
+            body = Box::new(Stmt::Block(Rc::new([
                 body,
                 Box::new(Stmt::Expr(increment)),
             ])));
         }
         body = Box::new(Stmt::While(condition, body));
         if let Some(initializer) = initializer {
-            body = Box::new(Stmt::Block(Arc::new([initializer, body])));
+            body = Box::new(Stmt::Block(Rc::new([initializer, body])));
         }
 
         Some(body)
@@ -207,13 +207,13 @@ impl<'a> Parser<'a> {
         Some(Box::new(Stmt::Block(stmts)))
     }
 
-    fn stmt_vec(&mut self) -> Option<Arc<[Box<Stmt>]>> {
+    fn stmt_vec(&mut self) -> Option<Rc<[Box<Stmt>]>> {
         let mut statements = Vec::new();
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             statements.push(self.declaration()?);
         }
         self.consume(&TokenKind::RightBrace, || "Expect '}' after block.".into());
-        Some(Arc::from(statements))
+        Some(Rc::from(statements))
     }
 
     fn assigment(&mut self) -> Option<Box<Expr>> {
@@ -371,7 +371,7 @@ impl<'a> Parser<'a> {
         } else if let TokenKind::Number(number) = self.peek().kind {
             Some(Expr::from(number))
         } else if let TokenKind::String(string) = &self.peek().kind {
-            Some(Expr::Literal(Cell::from(Arc::clone(string))))
+            Some(Expr::Literal(Cell::from(Rc::clone(string))))
         } else {
             None
         };
@@ -414,7 +414,7 @@ impl<'a> Parser<'a> {
             format!("Expect '{{' before {kind} body.")
         })?;
         let body = self.stmt_vec()?;
-        Some(Expr::Function(name, Arc::from(parameters), body))
+        Some(Expr::Function(name, Rc::from(parameters), body))
     }
 
     fn match_any(&mut self, kinds: &[TokenKind]) -> bool {
@@ -511,7 +511,7 @@ mod tests {
         assert_eq!(test_parse_expr("nil").unwrap().as_ref(), &Expr::from(()));
         assert_eq!(
             test_parse_expr("\"abc\"").unwrap().as_ref(),
-            &Expr::from(Arc::from("abc"))
+            &Expr::from(Rc::from("abc"))
         );
     }
 

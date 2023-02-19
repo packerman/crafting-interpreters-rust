@@ -1,4 +1,4 @@
-use std::{fmt::Display, sync::Arc};
+use std::{fmt::Display, rc::Rc};
 
 use super::{
     callable::{self, Callable},
@@ -7,14 +7,14 @@ use super::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Cell(Option<Arc<Value>>);
+pub struct Cell(Option<Rc<Value>>);
 
 #[derive(Debug, Clone)]
 pub enum Value {
     Boolean(bool),
     Number(f64),
-    String(Arc<str>),
-    Callable(Arc<dyn Callable>),
+    String(Rc<str>),
+    Callable(Rc<dyn Callable>),
 }
 
 impl PartialEq for Value {
@@ -33,7 +33,7 @@ impl PartialEq for Value {
 
 impl From<Value> for Cell {
     fn from(value: Value) -> Self {
-        Self(Some(Arc::new(value)))
+        Self(Some(Rc::new(value)))
     }
 }
 
@@ -61,18 +61,18 @@ impl TryFrom<Cell> for f64 {
     }
 }
 
-impl From<Arc<str>> for Cell {
-    fn from(value: Arc<str>) -> Self {
+impl From<Rc<str>> for Cell {
+    fn from(value: Rc<str>) -> Self {
         Self::from(Value::String(value))
     }
 }
 
-impl TryFrom<Cell> for Arc<str> {
+impl TryFrom<Cell> for Rc<str> {
     type Error = String;
 
     fn try_from(value: Cell) -> Result<Self, Self::Error> {
         if let Some(Value::String(v)) = value.0.as_deref() {
-            Ok(Arc::clone(v))
+            Ok(Rc::clone(v))
         } else {
             Err(String::from("Expect number."))
         }
@@ -97,18 +97,18 @@ impl From<()> for Cell {
     }
 }
 
-impl From<Arc<dyn Callable>> for Cell {
-    fn from(value: Arc<dyn Callable>) -> Self {
+impl From<Rc<dyn Callable>> for Cell {
+    fn from(value: Rc<dyn Callable>) -> Self {
         Cell::from(Value::Callable(value))
     }
 }
 
-impl TryFrom<Cell> for Arc<dyn Callable> {
+impl TryFrom<Cell> for Rc<dyn Callable> {
     type Error = RuntimeError;
 
     fn try_from(value: Cell) -> Result<Self, Self::Error> {
         if let Some(Value::Callable(value)) = value.0.as_deref() {
-            Ok(Arc::clone(value))
+            Ok(Rc::clone(value))
         } else {
             Err(RuntimeError::from(String::from(
                 "Can only call functions and classes.",

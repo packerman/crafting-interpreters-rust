@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt::Display, sync::Arc};
+use std::{cell::RefCell, fmt::Display, rc::Rc};
 
 use super::{
     callable::{Callable, ExecutionContext},
@@ -13,19 +13,19 @@ use super::{
 #[derive(Debug)]
 pub struct Function {
     name: Option<Token>,
-    parameters: Arc<[Token]>,
-    body: Arc<[Box<Stmt>]>,
-    closure: Arc<RefCell<Environment>>,
+    parameters: Rc<[Token]>,
+    body: Rc<[Box<Stmt>]>,
+    closure: Rc<RefCell<Environment>>,
 }
 
 impl Function {
     pub fn init(
         name: Option<Token>,
-        parameters: Arc<[Token]>,
-        body: Arc<[Box<Stmt>]>,
-        closure: Arc<RefCell<Environment>>,
-    ) -> Arc<dyn Callable> {
-        Arc::new(Self {
+        parameters: Rc<[Token]>,
+        body: Rc<[Box<Stmt>]>,
+        closure: Rc<RefCell<Environment>>,
+    ) -> Rc<dyn Callable> {
+        Rc::new(Self {
             name,
             parameters,
             body,
@@ -44,11 +44,11 @@ impl Callable for Function {
         context: &mut dyn ExecutionContext,
         arguments: &[Cell],
     ) -> Result<Cell, RuntimeError> {
-        let environment = Environment::new_with_enclosing(Arc::clone(&self.closure));
+        let environment = Environment::new_with_enclosing(Rc::clone(&self.closure));
         for (i, parameter) in self.parameters.iter().enumerate() {
             environment
                 .borrow_mut()
-                .define(Arc::clone(parameter.lexeme()), arguments[i].to_owned())
+                .define(Rc::clone(parameter.lexeme()), arguments[i].to_owned())
         }
         let result = context.execute_block(&self.body, &environment);
         match result {

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, rc::Rc};
 
 use super::{
     error::ErrorReporter,
@@ -162,7 +162,7 @@ impl<'a> ScanTokens<'a> {
         } else {
             self.advance();
             let value = self.copy_slice(self.start + 1, self.current - 1);
-            self.emit_token(TokenKind::String(Arc::from(value)))
+            self.emit_token(TokenKind::String(Rc::from(value)))
         }
     }
 
@@ -229,11 +229,7 @@ impl<'a> ScanTokens<'a> {
     }
 
     fn emit_token(&self, kind: TokenKind) -> Option<Token> {
-        Some(Token::new(
-            kind,
-            Arc::from(self.current_lexeme()),
-            self.line,
-        ))
+        Some(Token::new(kind, Rc::from(self.current_lexeme()), self.line))
     }
 
     fn cond_emit(

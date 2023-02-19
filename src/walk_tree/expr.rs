@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use super::{stmt::Stmt, token::Token, value::Cell};
 
@@ -15,7 +15,7 @@ pub enum Expr {
     Variable(Token),
     Assignment(Token, Box<Expr>),
     Logical(Box<Expr>, Token, Box<Expr>),
-    Function(Option<Token>, Arc<[Token]>, Arc<[Box<Stmt>]>),
+    Function(Option<Token>, Rc<[Token]>, Rc<[Box<Stmt>]>),
 }
 
 impl From<bool> for Expr {
@@ -30,8 +30,8 @@ impl From<f64> for Expr {
     }
 }
 
-impl From<Arc<str>> for Expr {
-    fn from(value: Arc<str>) -> Self {
+impl From<Rc<str>> for Expr {
+    fn from(value: Rc<str>) -> Self {
         Self::Literal(Cell::from(value))
     }
 }

@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::SystemTime};
+use std::{rc::Rc, time::SystemTime};
 
 use super::{
     callable::{Callable, ExecutionContext},
@@ -27,7 +27,7 @@ impl Callable for Clock {
 }
 
 pub fn clock() -> Cell {
-    let value: Arc<dyn Callable> = Arc::new(Clock);
+    let value: Rc<dyn Callable> = Rc::new(Clock);
     Cell::from(value)
 }
 
@@ -51,6 +51,6 @@ impl Callable for Print {
 }
 
 pub fn print() -> Cell {
-    let value: Arc<dyn Callable> = Arc::new(Print);
+    let value: Rc<dyn Callable> = Rc::new(Print);
     Cell::from(value)
 }
