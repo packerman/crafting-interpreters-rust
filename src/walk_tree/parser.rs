@@ -258,13 +258,14 @@ impl<'a> Parser<'a> {
         if self.match_only(&TokenKind::Equal) {
             let equals = self.previous().to_owned();
             let value = self.assigment()?;
-            if let Expr::Variable(name) = expr.as_ref() {
-                Some(Box::new(Expr::Assignment {
-                    name: name.to_owned(),
+            match *expr {
+                Expr::Variable(name) => Some(Box::new(Expr::Assignment { name, value })),
+                Expr::Get { object, name } => Some(Box::new(Expr::Set {
+                    object,
+                    name,
                     value,
-                }))
-            } else {
-                self.error(&equals, "Invalid assignment target.")
+                })),
+                _ => self.error(&equals, "Invalid assignment target."),
             }
         } else {
             Some(expr)
@@ -362,6 +363,13 @@ impl<'a> Parser<'a> {
         loop {
             if self.match_only(&TokenKind::LeftParen) {
                 expr = self.finish_call(expr)?;
+            } else if self.match_only(&TokenKind::Dot) {
+                let name = self
+                    .consume(&TokenKind::Identifier, || {
+                        "Expect property name after '.'.".into()
+                    })?
+                    .to_owned();
+                expr = Box::new(Expr::Get { object: expr, name });
             } else {
                 break;
             }

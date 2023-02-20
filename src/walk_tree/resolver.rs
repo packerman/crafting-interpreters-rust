@@ -80,6 +80,12 @@ impl<'a> Resolver<'a> {
                 right,
             } => self.resolve_logical_expression(left, right),
             Expr::Function(function) => self.resolve_function_expr(function),
+            Expr::Get { object, name } => self.resolve_get_expr(object, name),
+            Expr::Set {
+                object,
+                name,
+                value,
+            } => self.resolve_set_expr(object, name, value),
         }
     }
 
@@ -250,6 +256,15 @@ impl<'a> Resolver<'a> {
     fn resolve_class_stmt(&mut self, name: &Token, _methods: &[Function]) {
         self.declare(name);
         self.define(name)
+    }
+
+    fn resolve_get_expr(&mut self, object: &Expr, _name: &Token) {
+        self.resolve_expr(object)
+    }
+
+    fn resolve_set_expr(&mut self, object: &Expr, _name: &Token, value: &Expr) {
+        self.resolve_expr(value);
+        self.resolve_expr(object);
     }
 }
 

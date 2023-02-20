@@ -36,6 +36,15 @@ pub enum Expr {
         right: Box<Expr>,
     },
     Function(Function),
+    Get {
+        object: Box<Expr>,
+        name: Token,
+    },
+    Set {
+        object: Box<Expr>,
+        name: Token,
+        value: Box<Expr>,
+    },
 }
 
 impl Expr {

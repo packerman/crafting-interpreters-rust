@@ -1,4 +1,6 @@
 use std::{
+    cell::RefCell,
+    collections::HashMap,
     fmt::Display,
     rc::{Rc, Weak},
 };
@@ -6,6 +8,7 @@ use std::{
 use super::{
     callable::{Callable, ExecutionContext},
     error::RuntimeError,
+    token::Token,
     value::Cell,
 };
 
@@ -49,11 +52,28 @@ impl Display for Class {
 #[derive(Debug, Clone)]
 pub struct Instance {
     class: Rc<Class>,
+    fields: HashMap<Rc<str>, Cell>,
 }
 
 impl Instance {
-    fn new(class: Rc<Class>) -> Self {
-        Self { class }
+    fn new(class: Rc<Class>) -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(Self {
+            class,
+            fields: HashMap::new(),
+        }))
+    }
+
+    pub fn get(&self, name: &Token) -> Result<Cell, RuntimeError> {
+        self.fields.get(name.lexeme()).cloned().ok_or_else(|| {
+            RuntimeError::new(
+                name.to_owned(),
+                &format!("Undefined property '{}'.", name.lexeme()),
+            )
+        })
+    }
+
+    pub fn set(&mut self, name: &Token, value: Cell) {
+        self.fields.insert(Rc::clone(name.lexeme()), value);
     }
 }
 
