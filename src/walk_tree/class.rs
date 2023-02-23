@@ -8,6 +8,7 @@ use std::{
 use super::{
     callable::{Callable, ExecutionContext},
     error::RuntimeError,
+    function::Function,
     token::Token,
     value::Cell,
 };
@@ -15,12 +16,12 @@ use super::{
 #[derive(Debug, Clone)]
 pub struct Class {
     name: Rc<str>,
-    methods: HashMap<Rc<str>, Rc<dyn Callable>>,
+    methods: HashMap<Rc<str>, Rc<Function>>,
     me: Weak<Self>,
 }
 
 impl Class {
-    pub fn new(name: Rc<str>, methods: HashMap<Rc<str>, Rc<dyn Callable>>) -> Rc<Self> {
+    pub fn new(name: Rc<str>, methods: HashMap<Rc<str>, Rc<Function>>) -> Rc<Self> {
         Rc::new_cyclic(|me| Self {
             name,
             methods,
@@ -28,7 +29,7 @@ impl Class {
         })
     }
 
-    pub fn find_method(&self, name: &str) -> Option<&Rc<dyn Callable>> {
+    pub fn find_method(&self, name: &str) -> Option<&Rc<Function>> {
         self.methods.get(name)
     }
 }
@@ -59,21 +60,26 @@ impl Display for Class {
 pub struct Instance {
     class: Rc<Class>,
     fields: HashMap<Rc<str>, Cell>,
+    me: Weak<RefCell<Self>>,
 }
 
 impl Instance {
     fn new(class: Rc<Class>) -> Rc<RefCell<Self>> {
-        Rc::new(RefCell::new(Self {
-            class,
-            fields: HashMap::new(),
-        }))
+        Rc::new_cyclic(|me| {
+            RefCell::new(Self {
+                class,
+                fields: HashMap::new(),
+                me: me.clone(),
+            })
+        })
     }
 
     pub fn get(&self, name: &Token) -> Result<Cell, RuntimeError> {
         if let Some(value) = self.fields.get(name.lexeme()) {
             Ok(value.to_owned())
         } else if let Some(method) = self.class.find_method(name.lexeme()) {
-            Ok(Cell::from(Rc::clone(method)))
+            let method = Rc::clone(method).bind(self.me());
+            Ok(Cell::from(method))
         } else {
             Err(RuntimeError::new(
                 name.to_owned(),
@@ -84,6 +90,10 @@ impl Instance {
 
     pub fn set(&mut self, name: &Token, value: Cell) {
         self.fields.insert(Rc::clone(name.lexeme()), value);
+    }
+
+    pub fn me(&self) -> Rc<RefCell<Self>> {
+        self.me.upgrade().unwrap()
     }
 }
 

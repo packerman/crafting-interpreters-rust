@@ -86,6 +86,7 @@ impl<'a> Resolver<'a> {
                 name,
                 value,
             } => self.resolve_set_expr(object, name, value),
+            Expr::This { keyword } => self.resolve_this_expr(expr, keyword),
         }
     }
 
@@ -247,9 +248,15 @@ impl<'a> Resolver<'a> {
     fn resolve_class_stmt(&mut self, name: &Token, methods: &[Function]) {
         self.declare(name);
         self.define(name);
+
+        self.begin_scope();
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(Rc::from("this"), true);
+        }
         for method in methods {
             self.resolve_function(method, FunctionType::Method);
         }
+        self.end_scope();
     }
 
     fn resolve_get_expr(&mut self, object: &Expr, _name: &Token) {
@@ -259,6 +266,10 @@ impl<'a> Resolver<'a> {
     fn resolve_set_expr(&mut self, object: &Expr, _name: &Token, value: &Expr) {
         self.resolve_expr(value);
         self.resolve_expr(object);
+    }
+
+    fn resolve_this_expr(&mut self, expr: &Expr, keyword: &Token) {
+        self.resolve_local(expr, keyword)
     }
 }
 

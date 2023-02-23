@@ -77,7 +77,7 @@ where
                 right,
             } => self.evaluate_binary(left, operator, right, env),
             Expr::Function(function) => {
-                let function = Function::init(function, Rc::clone(env));
+                let function: Rc<dyn Callable> = Function::new(function, Rc::clone(env));
                 Ok(Cell::from(function))
             }
             Expr::Call {
@@ -103,6 +103,7 @@ where
                 name,
                 value,
             } => self.evaluate_set_expr(object, name, value, env),
+            Expr::This { keyword } => self.evaluate_this_expr(expr, keyword, env),
         }
     }
 
@@ -415,7 +416,7 @@ where
             .map(|method| {
                 (
                     Rc::clone(method.name().expect("Method has a name").lexeme()),
-                    Function::init(method, Rc::clone(env)),
+                    Function::new(method, Rc::clone(env)),
                 )
             })
             .collect();
@@ -448,6 +449,15 @@ where
         let value = self.evaluate(value, env)?;
         instance.borrow_mut().set(name, value.clone());
         Ok(value)
+    }
+
+    fn evaluate_this_expr(
+        &self,
+        expr: &Expr,
+        keyword: &Token,
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
+        self.look_up_variable(keyword, expr, env)
     }
 
     fn check_number_operand(operator: &Token, operand: &Cell) -> Result<(), RuntimeError> {

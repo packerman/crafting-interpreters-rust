@@ -4,6 +4,7 @@ use super::{
     callable::{self, Callable},
     class::{Class, Instance},
     error::RuntimeError,
+    function::Function,
     token::Token,
 };
 
@@ -102,6 +103,12 @@ impl From<()> for Cell {
 
 impl From<Rc<dyn Callable>> for Cell {
     fn from(value: Rc<dyn Callable>) -> Self {
+        Cell::from(Value::Function(value))
+    }
+}
+
+impl From<Rc<Function>> for Cell {
+    fn from(value: Rc<Function>) -> Self {
         Cell::from(Value::Function(value))
     }
 }

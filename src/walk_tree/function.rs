@@ -2,6 +2,7 @@ use std::{cell::RefCell, fmt::Display, rc::Rc};
 
 use super::{
     callable::{Callable, ExecutionContext},
+    class::Instance,
     control_flow::ControlFlow,
     environment::Environment,
     error::RuntimeError,
@@ -20,12 +21,25 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn init(function: &expr::Function, closure: Rc<RefCell<Environment>>) -> Rc<dyn Callable> {
+    pub fn new(function: &expr::Function, closure: Rc<RefCell<Environment>>) -> Rc<Self> {
         Rc::new(Self {
             name: function.name().cloned(),
             parameters: Rc::clone(function.parameters()),
             body: Rc::clone(function.body()),
             closure,
+        })
+    }
+
+    pub fn bind(&self, instance: Rc<RefCell<Instance>>) -> Rc<Self> {
+        let environment = Rc::clone(&self.closure);
+        environment
+            .borrow_mut()
+            .define(Rc::from("this"), Cell::from(instance));
+        Rc::new(Function {
+            name: self.name.clone(),
+            parameters: Rc::clone(&self.parameters),
+            body: Rc::clone(&self.body),
+            closure: environment,
         })
     }
 }

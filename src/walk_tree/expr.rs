@@ -45,6 +45,9 @@ pub enum Expr {
         name: Token,
         value: Box<Expr>,
     },
+    This {
+        keyword: Token,
+    },
 }
 
 impl Expr {

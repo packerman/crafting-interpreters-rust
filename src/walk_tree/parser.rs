@@ -412,6 +412,10 @@ impl<'a> Parser<'a> {
             Expr::from(())
         } else if let Some(literal) = self.literal() {
             literal
+        } else if self.match_only(&TokenKind::This) {
+            Expr::This {
+                keyword: self.previous().to_owned(),
+            }
         } else if self.match_only(&TokenKind::Identifier) {
             Expr::Variable(self.previous().to_owned())
         } else if self.match_only(&TokenKind::Fun) {
