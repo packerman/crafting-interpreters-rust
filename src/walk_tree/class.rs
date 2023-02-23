@@ -15,15 +15,21 @@ use super::{
 #[derive(Debug, Clone)]
 pub struct Class {
     name: Rc<str>,
+    methods: HashMap<Rc<str>, Rc<dyn Callable>>,
     me: Weak<Self>,
 }
 
 impl Class {
-    pub fn new(name: Rc<str>) -> Rc<Self> {
+    pub fn new(name: Rc<str>, methods: HashMap<Rc<str>, Rc<dyn Callable>>) -> Rc<Self> {
         Rc::new_cyclic(|me| Self {
             name,
+            methods,
             me: me.clone(),
         })
+    }
+
+    pub fn find_method(&self, name: &str) -> Option<&Rc<dyn Callable>> {
+        self.methods.get(name)
     }
 }
 
@@ -64,12 +70,16 @@ impl Instance {
     }
 
     pub fn get(&self, name: &Token) -> Result<Cell, RuntimeError> {
-        self.fields.get(name.lexeme()).cloned().ok_or_else(|| {
-            RuntimeError::new(
+        if let Some(value) = self.fields.get(name.lexeme()) {
+            Ok(value.to_owned())
+        } else if let Some(method) = self.class.find_method(name.lexeme()) {
+            Ok(Cell::from(Rc::clone(method)))
+        } else {
+            Err(RuntimeError::new(
                 name.to_owned(),
                 &format!("Undefined property '{}'.", name.lexeme()),
-            )
-        })
+            ))
+        }
     }
 
     pub fn set(&mut self, name: &Token, value: Cell) {

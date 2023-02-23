@@ -77,12 +77,7 @@ where
                 right,
             } => self.evaluate_binary(left, operator, right, env),
             Expr::Function(function) => {
-                let function = Function::init(
-                    function.name().cloned(),
-                    function.parameters().to_owned(),
-                    function.body().to_owned(),
-                    Rc::clone(env),
-                );
+                let function = Function::init(function, Rc::clone(env));
                 Ok(Cell::from(function))
             }
             Expr::Call {
@@ -410,12 +405,21 @@ where
     fn execute_class_stmt(
         &self,
         name: &Token,
-        _methods: &[FunctionExpr],
-        env: &RefCell<Environment>,
+        method_exprs: &[FunctionExpr],
+        env: &Rc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow> {
         env.borrow_mut()
             .define(Rc::clone(name.lexeme()), Cell::from(()));
-        let class = Class::new(Rc::clone(name.lexeme()));
+        let methods = method_exprs
+            .iter()
+            .map(|method| {
+                (
+                    Rc::clone(method.name().expect("Method has a name").lexeme()),
+                    Function::init(method, Rc::clone(env)),
+                )
+            })
+            .collect();
+        let class = Class::new(Rc::clone(name.lexeme()), methods);
         env.borrow_mut().assign(name, Cell::from(class))?;
         Ok(())
     }
@@ -429,6 +433,20 @@ where
         let object = self.evaluate(object, env)?;
         let instance = <Rc<RefCell<Instance>>>::try_from(object)?;
         let value = instance.borrow().get(name)?;
+        Ok(value)
+    }
+
+    fn evaluate_set_expr(
+        &mut self,
+        object: &Expr,
+        name: &Token,
+        value: &Expr,
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
+        let object = self.evaluate(object, env)?;
+        let instance = <Rc<RefCell<Instance>>>::try_from(object)?;
+        let value = self.evaluate(value, env)?;
+        instance.borrow_mut().set(name, value.clone());
         Ok(value)
     }
 
@@ -454,20 +472,6 @@ where
 
     fn runtime_error<T>(token: Token, message: &str) -> Result<T, RuntimeError> {
         Err(RuntimeError::new(token, message))
-    }
-
-    fn evaluate_set_expr(
-        &mut self,
-        object: &Expr,
-        name: &Token,
-        value: &Expr,
-        env: &Rc<RefCell<Environment>>,
-    ) -> Result<Cell, RuntimeError> {
-        let object = self.evaluate(object, env)?;
-        let instance = <Rc<RefCell<Instance>>>::try_from(object)?;
-        let value = self.evaluate(value, env)?;
-        instance.borrow_mut().set(name, value.clone());
-        Ok(value)
     }
 }
 
@@ -867,6 +871,22 @@ mod tests {
             print(bagel);
             "#,
             b"Bagel instance\n",
+        )
+    }
+
+    #[test]
+    fn methods_work() {
+        assert_prints(
+            r#"
+            class Say {
+               hello() {
+                    print("Hello");
+               } 
+            }
+
+            Say().hello();            
+        "#,
+            b"Hello\n",
         )
     }
 

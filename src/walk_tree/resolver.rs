@@ -162,28 +162,19 @@ impl<'a> Resolver<'a> {
             self.declare(name);
             self.define(name)
         }
-        self.resolve_function(
-            function.parameters(),
-            function.body(),
-            FunctionType::Function,
-        );
+        self.resolve_function(function, FunctionType::Function);
     }
 
-    fn resolve_function(
-        &mut self,
-        params: &[Token],
-        body: &[Box<Stmt>],
-        function_type: FunctionType,
-    ) {
+    fn resolve_function(&mut self, function: &Function, function_type: FunctionType) {
         let enclosing_function = self.current_function;
         self.current_function = Some(function_type);
 
         self.begin_scope();
-        for param in params {
+        for param in function.parameters().iter() {
             self.declare(param);
             self.define(param);
         }
-        self.resolve_stmts(body);
+        self.resolve_stmts(function.body());
         self.end_scope();
 
         self.current_function = enclosing_function;
@@ -253,9 +244,12 @@ impl<'a> Resolver<'a> {
         self.resolve_expr(else_expr)
     }
 
-    fn resolve_class_stmt(&mut self, name: &Token, _methods: &[Function]) {
+    fn resolve_class_stmt(&mut self, name: &Token, methods: &[Function]) {
         self.declare(name);
-        self.define(name)
+        self.define(name);
+        for method in methods {
+            self.resolve_function(method, FunctionType::Method);
+        }
     }
 
     fn resolve_get_expr(&mut self, object: &Expr, _name: &Token) {
@@ -271,4 +265,5 @@ impl<'a> Resolver<'a> {
 #[derive(Debug, Clone, Copy)]
 enum FunctionType {
     Function,
+    Method,
 }

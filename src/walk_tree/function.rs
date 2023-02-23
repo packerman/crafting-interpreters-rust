@@ -5,6 +5,7 @@ use super::{
     control_flow::ControlFlow,
     environment::Environment,
     error::RuntimeError,
+    expr,
     stmt::Stmt,
     token::Token,
     value::Cell,
@@ -19,16 +20,11 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn init(
-        name: Option<Token>,
-        parameters: Rc<[Token]>,
-        body: Rc<[Box<Stmt>]>,
-        closure: Rc<RefCell<Environment>>,
-    ) -> Rc<dyn Callable> {
+    pub fn init(function: &expr::Function, closure: Rc<RefCell<Environment>>) -> Rc<dyn Callable> {
         Rc::new(Self {
-            name,
-            parameters,
-            body,
+            name: function.name().cloned(),
+            parameters: Rc::clone(function.parameters()),
+            body: Rc::clone(function.body()),
             closure,
         })
     }
