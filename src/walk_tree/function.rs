@@ -18,15 +18,23 @@ pub struct Function {
     parameters: Rc<[Token]>,
     body: Rc<[Box<Stmt>]>,
     closure: Rc<RefCell<Environment>>,
+    is_initializer: bool,
+    this: Rc<str>,
 }
 
 impl Function {
-    pub fn new(function: &expr::Function, closure: Rc<RefCell<Environment>>) -> Rc<Self> {
+    pub fn new(
+        function: &expr::Function,
+        closure: Rc<RefCell<Environment>>,
+        is_initializer: bool,
+    ) -> Rc<Self> {
         Rc::new(Self {
             name: function.name().cloned(),
             parameters: Rc::clone(function.parameters()),
             body: Rc::clone(function.body()),
             closure,
+            is_initializer,
+            this: Rc::from("this"),
         })
     }
 
@@ -34,12 +42,14 @@ impl Function {
         let environment = Rc::clone(&self.closure);
         environment
             .borrow_mut()
-            .define(Rc::from("this"), Cell::from(instance));
+            .define(Rc::clone(&self.this), Cell::from(instance));
         Rc::new(Function {
             name: self.name.clone(),
             parameters: Rc::clone(&self.parameters),
             body: Rc::clone(&self.body),
             closure: environment,
+            is_initializer: self.is_initializer,
+            this: Rc::clone(&self.this),
         })
     }
 }
@@ -62,9 +72,17 @@ impl Callable for Function {
         }
         let result = context.execute_block(&self.body, &environment);
         match result {
-            Err(ControlFlow::Return(value)) => Ok(value),
+            Err(ControlFlow::Return(value)) => Ok(if self.is_initializer {
+                self.closure.borrow().get_at(0, &self.this)
+            } else {
+                value
+            }),
             Err(ControlFlow::RuntimeError(runtime_error)) => Err(runtime_error),
-            _ => Ok(Cell::from(())),
+            _ => Ok(if self.is_initializer {
+                self.closure.borrow().get_at(0, &self.this)
+            } else {
+                Cell::from(())
+            }),
         }
     }
 }

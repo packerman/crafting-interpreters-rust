@@ -16,6 +16,7 @@ pub struct Resolver<'a> {
     error_reporter: &'a ErrorReporter,
     scopes: Vec<HashMap<Rc<str>, bool>>,
     current_function: Option<FunctionType>,
+    current_class: Option<ClassType>,
 }
 
 impl<'a> Resolver<'a> {
@@ -25,6 +26,7 @@ impl<'a> Resolver<'a> {
             error_reporter,
             scopes: Vec::new(),
             current_function: None,
+            current_class: None,
         }
     }
 
@@ -205,6 +207,10 @@ impl<'a> Resolver<'a> {
         }
 
         if let Some(value) = value {
+            if self.current_function == Some(FunctionType::Initializer) {
+                self.error_reporter
+                    .token_error(keyword, "Can't return a value from an initializer.")
+            }
             self.resolve_expr(value)
         }
     }
@@ -246,6 +252,9 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_class_stmt(&mut self, name: &Token, methods: &[Function]) {
+        let enclosing_class = self.current_class;
+        self.current_class = Some(ClassType::Class);
+
         self.declare(name);
         self.define(name);
 
@@ -254,9 +263,19 @@ impl<'a> Resolver<'a> {
             scope.insert(Rc::from("this"), true);
         }
         for method in methods {
-            self.resolve_function(method, FunctionType::Method);
+            let declaration = if method
+                .name()
+                .map_or(false, |name| name.lexeme().as_ref() == "init")
+            {
+                FunctionType::Initializer
+            } else {
+                FunctionType::Method
+            };
+            self.resolve_function(method, declaration);
         }
         self.end_scope();
+
+        self.current_class = enclosing_class;
     }
 
     fn resolve_get_expr(&mut self, object: &Expr, _name: &Token) {
@@ -269,12 +288,24 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_this_expr(&mut self, expr: &Expr, keyword: &Token) {
+        if self.current_class.is_none() {
+            self.error_reporter
+                .token_error(keyword, "Can't use 'this' outside of a class.");
+            return;
+        }
+
         self.resolve_local(expr, keyword)
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum FunctionType {
     Function,
+    Initializer,
     Method,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ClassType {
+    Class,
 }

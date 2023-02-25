@@ -77,7 +77,7 @@ where
                 right,
             } => self.evaluate_binary(left, operator, right, env),
             Expr::Function(function) => {
-                let function: Rc<dyn Callable> = Function::new(function, Rc::clone(env));
+                let function: Rc<dyn Callable> = Function::new(function, Rc::clone(env), false);
                 Ok(Cell::from(function))
             }
             Expr::Call {
@@ -414,9 +414,10 @@ where
         let methods = method_exprs
             .iter()
             .map(|method| {
+                let name = method.name().expect("Method has a name").lexeme();
                 (
-                    Rc::clone(method.name().expect("Method has a name").lexeme()),
-                    Function::new(method, Rc::clone(env)),
+                    Rc::clone(name),
+                    Function::new(method, Rc::clone(env), name.as_ref() == "init"),
                 )
             })
             .collect();

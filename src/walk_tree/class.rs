@@ -36,17 +36,25 @@ impl Class {
 
 impl Callable for Class {
     fn arity(&self) -> usize {
-        0
+        if let Some(initializer) = self.find_method("init") {
+            initializer.arity()
+        } else {
+            0
+        }
     }
 
     fn call(
         &self,
-        _context: &mut dyn ExecutionContext,
-        _arguments: &[Cell],
+        context: &mut dyn ExecutionContext,
+        arguments: &[Cell],
     ) -> Result<Cell, RuntimeError> {
-        Ok(Cell::from(Instance::new(
-            self.me.upgrade().expect("Reference exists"),
-        )))
+        let instance = Instance::new(self.me.upgrade().expect("Reference exists"));
+        if let Some(initializer) = self.find_method("init") {
+            initializer
+                .bind(Rc::clone(&instance))
+                .call(context, arguments)?;
+        }
+        Ok(Cell::from(instance))
     }
 }
 
