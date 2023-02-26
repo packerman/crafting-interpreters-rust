@@ -901,6 +901,47 @@ mod tests {
         )
     }
 
+    #[test]
+    fn this_works() {
+        assert_prints(
+            r#"
+            class Cake {
+                taste() {
+                    var adjective = "delicious";
+                    print("The " + this.flavor + " cake is " + adjective + "!");
+                }
+            }
+
+            var cake = Cake();
+            cake.flavor = "German chocolate";
+            cake.taste();
+        "#,
+            b"The German chocolate cake is delicious!\n",
+        );
+    }
+
+    #[test]
+    fn constructor_works() {
+        assert_prints(
+            r#"
+            class Rectangle {
+                init(a, b) {
+                    this.a = a;
+                    this.b = b;
+                }
+
+                area() {
+                    return this.a * this.b;
+                }
+            }
+
+            var rect = Rectangle(10, 20);
+            print(rect.area());
+        "#,
+            b"200\n",
+        );
+    }
+
     fn assert_evaluates_to<T>(source: &str, value: T)
     where
         Cell: From<T>,
