@@ -1,6 +1,11 @@
 use std::{collections::HashMap, rc::Rc};
 
-use super::{error::ErrorReporter, expr::Expr, stmt::Stmt, token::Token};
+use super::{
+    error::ErrorReporter,
+    expr::{Expr, Function},
+    stmt::Stmt,
+    token::Token,
+};
 
 pub trait Resolve {
     fn resolve(&mut self, expr: *const Expr, depth: usize);
@@ -11,6 +16,7 @@ pub struct Resolver<'a> {
     error_reporter: &'a ErrorReporter,
     scopes: Vec<HashMap<Rc<str>, bool>>,
     current_function: Option<FunctionType>,
+    current_class: Option<ClassType>,
 }
 
 impl<'a> Resolver<'a> {
@@ -20,6 +26,7 @@ impl<'a> Resolver<'a> {
             error_reporter,
             scopes: Vec::new(),
             current_function: None,
+            current_class: None,
         }
     }
 
@@ -31,33 +38,57 @@ impl<'a> Resolver<'a> {
         match stmt {
             Stmt::Block(stmts) => self.resolve_block_stmt(stmts),
             Stmt::Expr(expression) => self.resolve_expression_stmt(expression),
-            Stmt::If(condition, then_branch, else_branch) => {
-                self.resolve_if_stmt(condition, then_branch, else_branch.as_deref())
-            }
-            Stmt::Return(keyword, value) => self.resolve_return_stmt(keyword, value.as_deref()),
-            Stmt::While(condition, body) => self.resolve_while_stmt(condition, body),
-            Stmt::VarDeclaration(name, initializer) => {
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => self.resolve_if_stmt(condition, then_branch, else_branch.as_deref()),
+            Stmt::Return {
+                keyword,
+                expr: value,
+            } => self.resolve_return_stmt(keyword, value.as_deref()),
+            Stmt::While { condition, body } => self.resolve_while_stmt(condition, body),
+            Stmt::VarDeclaration { name, initializer } => {
                 self.resolve_var_stmt(name, initializer.as_deref())
             }
+            Stmt::Class { name, methods } => self.resolve_class_stmt(name, methods),
         }
     }
 
     fn resolve_expr(&mut self, expr: &Expr) {
         match expr {
-            Expr::Binary(left, _, right) => self.resolve_binary_expr(left, right),
-            Expr::Call(callee, _, arguments) => self.resolve_call_expr(callee, arguments),
-            Expr::Unary(_, right) => self.resolve_unary_expr(right),
+            Expr::Binary { left, right, .. } => self.resolve_binary_expr(left, right),
+            Expr::Call {
+                callee,
+                paren: _,
+                arguments,
+            } => self.resolve_call_expr(callee, arguments),
+            Expr::Unary {
+                operator: _,
+                operand: right,
+            } => self.resolve_unary_expr(right),
             Expr::Literal(_) => {}
             Expr::Grouping(expression) => self.resolve_grouping_expr(expression),
-            Expr::Ternary(condition, then_expr, else_expr) => {
-                self.resolve_ternary_expr(condition, then_expr, else_expr)
-            }
+            Expr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+            } => self.resolve_ternary_expr(condition, then_expr, else_expr),
             Expr::Variable(name) => self.resolve_variable_expr(expr, name),
-            Expr::Assignment(name, value) => self.resolve_assign_expr(expr, name, value),
-            Expr::Logical(left, _, right) => self.resolve_logical_expression(left, right),
-            Expr::Function(name, params, body) => {
-                self.resolve_function_expr(name.as_ref(), params, body)
-            }
+            Expr::Assignment { name, value } => self.resolve_assign_expr(expr, name, value),
+            Expr::Logical {
+                left,
+                operator: _,
+                right,
+            } => self.resolve_logical_expression(left, right),
+            Expr::Function(function) => self.resolve_function_expr(function),
+            Expr::Get { object, name } => self.resolve_get_expr(object, name),
+            Expr::Set {
+                object,
+                name,
+                value,
+            } => self.resolve_set_expr(object, name, value),
+            Expr::This { keyword } => self.resolve_this_expr(expr, keyword),
         }
     }
 
@@ -129,34 +160,24 @@ impl<'a> Resolver<'a> {
         self.resolve_local(expr, name);
     }
 
-    fn resolve_function_expr(
-        &mut self,
-        name: Option<&Token>,
-        params: &[Token],
-        body: &[Box<Stmt>],
-    ) {
-        if let Some(name) = name {
+    fn resolve_function_expr(&mut self, function: &Function) {
+        if let Some(name) = function.name() {
             self.declare(name);
             self.define(name)
         }
-        self.resolve_function(params, body, FunctionType::Function);
+        self.resolve_function(function, FunctionType::Function);
     }
 
-    fn resolve_function(
-        &mut self,
-        params: &[Token],
-        body: &[Box<Stmt>],
-        function_type: FunctionType,
-    ) {
+    fn resolve_function(&mut self, function: &Function, function_type: FunctionType) {
         let enclosing_function = self.current_function;
         self.current_function = Some(function_type);
 
         self.begin_scope();
-        for param in params {
+        for param in function.parameters().iter() {
             self.declare(param);
             self.define(param);
         }
-        self.resolve_stmts(body);
+        self.resolve_stmts(function.body());
         self.end_scope();
 
         self.current_function = enclosing_function;
@@ -186,6 +207,10 @@ impl<'a> Resolver<'a> {
         }
 
         if let Some(value) = value {
+            if self.current_function == Some(FunctionType::Initializer) {
+                self.error_reporter
+                    .token_error(keyword, "Can't return a value from an initializer.")
+            }
             self.resolve_expr(value)
         }
     }
@@ -225,9 +250,62 @@ impl<'a> Resolver<'a> {
         self.resolve_expr(then_expr);
         self.resolve_expr(else_expr)
     }
+
+    fn resolve_class_stmt(&mut self, name: &Token, methods: &[Function]) {
+        let enclosing_class = self.current_class;
+        self.current_class = Some(ClassType::Class);
+
+        self.declare(name);
+        self.define(name);
+
+        self.begin_scope();
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(Rc::from("this"), true);
+        }
+        for method in methods {
+            let declaration = if method
+                .name()
+                .map_or(false, |name| name.lexeme().as_ref() == "init")
+            {
+                FunctionType::Initializer
+            } else {
+                FunctionType::Method
+            };
+            self.resolve_function(method, declaration);
+        }
+        self.end_scope();
+
+        self.current_class = enclosing_class;
+    }
+
+    fn resolve_get_expr(&mut self, object: &Expr, _name: &Token) {
+        self.resolve_expr(object)
+    }
+
+    fn resolve_set_expr(&mut self, object: &Expr, _name: &Token, value: &Expr) {
+        self.resolve_expr(value);
+        self.resolve_expr(object);
+    }
+
+    fn resolve_this_expr(&mut self, expr: &Expr, keyword: &Token) {
+        if self.current_class.is_none() {
+            self.error_reporter
+                .token_error(keyword, "Can't use 'this' outside of a class.");
+            return;
+        }
+
+        self.resolve_local(expr, keyword)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum FunctionType {
+    Function,
+    Initializer,
+    Method,
 }
 
 #[derive(Debug, Clone, Copy)]
-enum FunctionType {
-    Function,
+enum ClassType {
+    Class,
 }

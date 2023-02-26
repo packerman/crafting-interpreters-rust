@@ -2,16 +2,33 @@ use std::rc::Rc;
 
 use crate::walk_tree::expr::Expr;
 
-use super::token::Token;
+use super::{expr::Function, token::Token};
 
 #[derive(Debug, PartialEq)]
 pub enum Stmt {
     Block(Rc<[Box<Stmt>]>),
     Expr(Box<Expr>),
-    If(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>),
-    Return(Token, Option<Box<Expr>>),
-    While(Box<Expr>, Box<Stmt>),
-    VarDeclaration(Token, Option<Box<Expr>>),
+    If {
+        condition: Box<Expr>,
+        then_branch: Box<Stmt>,
+        else_branch: Option<Box<Stmt>>,
+    },
+    Return {
+        keyword: Token,
+        expr: Option<Box<Expr>>,
+    },
+    While {
+        condition: Box<Expr>,
+        body: Box<Stmt>,
+    },
+    VarDeclaration {
+        name: Token,
+        initializer: Option<Box<Expr>>,
+    },
+    Class {
+        name: Token,
+        methods: Box<[Function]>,
+    },
 }
 
 impl Stmt {

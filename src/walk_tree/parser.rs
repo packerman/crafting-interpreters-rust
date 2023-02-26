@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use super::{
     error::ErrorReporter,
-    expr::Expr,
+    expr::{Expr, Function},
     token::{Token, TokenKind},
     value::Cell,
 };
@@ -64,9 +64,11 @@ impl<'a> Parser<'a> {
     }
 
     fn try_declaration(&mut self) -> Option<Box<Stmt>> {
-        if self.match_single(&TokenKind::Fun) {
-            self.function_declaration("function")
-        } else if self.match_single(&TokenKind::Var) {
+        if self.match_only(&TokenKind::Class) {
+            self.class_declaration()
+        } else if self.match_only(&TokenKind::Fun) {
+            self.function_declaration()
+        } else if self.match_only(&TokenKind::Var) {
             self.var_declaration()
         } else {
             self.statement()
@@ -74,15 +76,15 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> Option<Box<Stmt>> {
-        if self.match_single(&TokenKind::For) {
+        if self.match_only(&TokenKind::For) {
             self.for_statement()
-        } else if self.match_single(&TokenKind::If) {
+        } else if self.match_only(&TokenKind::If) {
             self.if_statement()
-        } else if self.match_single(&TokenKind::Return) {
+        } else if self.match_only(&TokenKind::Return) {
             self.return_stmt()
-        } else if self.match_single(&TokenKind::While) {
+        } else if self.match_only(&TokenKind::While) {
             self.while_statement()
-        } else if self.match_single(&TokenKind::LeftBrace) {
+        } else if self.match_only(&TokenKind::LeftBrace) {
             self.block()
         } else {
             self.expression_statement()
@@ -91,9 +93,9 @@ impl<'a> Parser<'a> {
 
     fn for_statement(&mut self) -> Option<Box<Stmt>> {
         self.consume(&TokenKind::LeftParen, || "Expect '(' after 'for'.".into())?;
-        let initializer = if self.match_single(&TokenKind::Semicolon) {
+        let initializer = if self.match_only(&TokenKind::Semicolon) {
             None
-        } else if self.match_single(&TokenKind::Var) {
+        } else if self.match_only(&TokenKind::Var) {
             Some(self.var_declaration()?)
         } else {
             Some(self.expression_statement()?)
@@ -122,7 +124,7 @@ impl<'a> Parser<'a> {
                 Box::new(Stmt::Expr(increment)),
             ])));
         }
-        body = Box::new(Stmt::While(condition, body));
+        body = Box::new(Stmt::While { condition, body });
         if let Some(initializer) = initializer {
             body = Box::new(Stmt::Block(Rc::new([initializer, body])));
         }
@@ -138,12 +140,16 @@ impl<'a> Parser<'a> {
         })?;
 
         let then_branch = self.statement()?;
-        let else_branch = if self.match_single(&TokenKind::Else) {
+        let else_branch = if self.match_only(&TokenKind::Else) {
             Some(self.statement()?)
         } else {
             None
         };
-        Some(Box::new(Stmt::If(condition, then_branch, else_branch)))
+        Some(Box::new(Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        }))
     }
 
     fn return_stmt(&mut self) -> Option<Box<Stmt>> {
@@ -156,7 +162,10 @@ impl<'a> Parser<'a> {
         self.consume(&TokenKind::Semicolon, || {
             "Expect ';' after return value.".to_string()
         })?;
-        Some(Box::new(Stmt::Return(keyword, value)))
+        Some(Box::new(Stmt::Return {
+            keyword,
+            expr: value,
+        }))
     }
 
     fn var_declaration(&mut self) -> Option<Box<Stmt>> {
@@ -165,7 +174,7 @@ impl<'a> Parser<'a> {
                 "Expect variable name.".to_string()
             })?
             .to_owned();
-        let initializer = if self.match_single(&TokenKind::Equal) {
+        let initializer = if self.match_only(&TokenKind::Equal) {
             self.expression()
         } else {
             None
@@ -173,7 +182,7 @@ impl<'a> Parser<'a> {
         self.consume(&TokenKind::Semicolon, || {
             "Expect ';' after variable declaration.".to_string()
         })?;
-        Some(Box::new(Stmt::VarDeclaration(name, initializer)))
+        Some(Box::new(Stmt::VarDeclaration { name, initializer }))
     }
 
     fn while_statement(&mut self) -> Option<Box<Stmt>> {
@@ -183,7 +192,7 @@ impl<'a> Parser<'a> {
             "Expect ')' after condition.".into()
         })?;
         let body = self.statement()?;
-        Some(Box::new(Stmt::While(condition, body)))
+        Some(Box::new(Stmt::While { condition, body }))
     }
 
     fn expression_statement(&mut self) -> Option<Box<Stmt>> {
@@ -194,12 +203,40 @@ impl<'a> Parser<'a> {
         Some(Box::new(Stmt::Expr(expr)))
     }
 
-    fn function_declaration(&mut self, kind: &str) -> Option<Box<Stmt>> {
+    fn class_declaration(&mut self) -> Option<Box<Stmt>> {
+        let name = self
+            .consume(&TokenKind::Identifier, || "Expect class name.".into())?
+            .to_owned();
+        self.consume(&TokenKind::LeftBrace, || {
+            "Expect '{' before class body.".into()
+        })?;
+        let mut methods = Vec::new();
+        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+            methods.push(self.function("method")?);
+        }
+        self.consume(&TokenKind::RightBrace, || {
+            "Expect '}' after class body.".into()
+        })?;
+        Some(Box::new(Stmt::Class {
+            name,
+            methods: Box::from(methods),
+        }))
+    }
+
+    fn function_declaration(&mut self) -> Option<Box<Stmt>> {
+        let function = self.function("function")?;
+        let declaration = Stmt::VarDeclaration {
+            name: function.name()?.clone(),
+            initializer: Some(Box::new(Expr::from(function))),
+        };
+        Some(Box::new(declaration))
+    }
+
+    fn function(&mut self, kind: &str) -> Option<Function> {
         let name = self
             .consume(&TokenKind::Identifier, || format!("Expect {kind} name."))?
             .clone();
-        let function = Box::new(self.function_expression(kind, Some(name.clone()))?);
-        Some(Box::new(Stmt::VarDeclaration(name, Some(function))))
+        self.function_literal(kind, Some(name))
     }
 
     fn block(&mut self) -> Option<Box<Stmt>> {
@@ -218,13 +255,17 @@ impl<'a> Parser<'a> {
 
     fn assigment(&mut self) -> Option<Box<Expr>> {
         let expr = self.ternary()?;
-        if self.match_single(&TokenKind::Equal) {
+        if self.match_only(&TokenKind::Equal) {
             let equals = self.previous().to_owned();
             let value = self.assigment()?;
-            if let Expr::Variable(name) = expr.as_ref() {
-                Some(Box::new(Expr::Assignment(name.to_owned(), value)))
-            } else {
-                self.error(&equals, "Invalid assignment target.")
+            match *expr {
+                Expr::Variable(name) => Some(Box::new(Expr::Assignment { name, value })),
+                Expr::Get { object, name } => Some(Box::new(Expr::Set {
+                    object,
+                    name,
+                    value,
+                })),
+                _ => self.error(&equals, "Invalid assignment target."),
             }
         } else {
             Some(expr)
@@ -233,11 +274,15 @@ impl<'a> Parser<'a> {
 
     fn ternary(&mut self) -> Option<Box<Expr>> {
         let expr = self.or()?;
-        if self.match_single(&TokenKind::QuestionMark) {
+        if self.match_only(&TokenKind::QuestionMark) {
             let then_expr = self.expression()?;
             self.consume(&TokenKind::Colon, || "Expect ':'.".into());
             let else_expr = self.expression()?;
-            Some(Box::new(Expr::Ternary(expr, then_expr, else_expr)))
+            Some(Box::new(Expr::Ternary {
+                condition: expr,
+                then_expr,
+                else_expr,
+            }))
         } else {
             Some(expr)
         }
@@ -257,10 +302,14 @@ impl<'a> Parser<'a> {
     {
         let mut expr = operand(self)?;
 
-        while self.match_single(token_kind) {
+        while self.match_only(token_kind) {
             let operator = self.previous().to_owned();
             let right = operand(self)?;
-            expr = Box::new(Expr::Logical(expr, operator, right));
+            expr = Box::new(Expr::Logical {
+                left: expr,
+                operator,
+                right,
+            });
         }
         Some(expr)
     }
@@ -287,7 +336,7 @@ impl<'a> Parser<'a> {
     {
         let mut expr = operand(self)?;
         while self.match_any(operators) {
-            expr = Box::new(Expr::Binary(
+            expr = Box::new(Expr::binary(
                 expr,
                 self.previous().to_owned(),
                 operand(self)?,
@@ -300,7 +349,10 @@ impl<'a> Parser<'a> {
         if self.match_any(&Self::UNARY_OPERATORS) {
             let operator = self.previous().to_owned();
             let right = self.unary()?;
-            Some(Box::new(Expr::Unary(operator, right)))
+            Some(Box::new(Expr::Unary {
+                operator,
+                operand: right,
+            }))
         } else {
             self.call()
         }
@@ -309,8 +361,15 @@ impl<'a> Parser<'a> {
     fn call(&mut self) -> Option<Box<Expr>> {
         let mut expr = self.primary()?;
         loop {
-            if self.match_single(&TokenKind::LeftParen) {
+            if self.match_only(&TokenKind::LeftParen) {
                 expr = self.finish_call(expr)?;
+            } else if self.match_only(&TokenKind::Dot) {
+                let name = self
+                    .consume(&TokenKind::Identifier, || {
+                        "Expect property name after '.'.".into()
+                    })?
+                    .to_owned();
+                expr = Box::new(Expr::Get { object: expr, name });
             } else {
                 break;
             }
@@ -326,7 +385,7 @@ impl<'a> Parser<'a> {
                     self.error::<()>(self.peek(), "Can't have more than 255 arguments.");
                 }
                 arguments.push(self.expression()?);
-                if !self.match_single(&TokenKind::Comma) {
+                if !self.match_only(&TokenKind::Comma) {
                     break;
                 }
             }
@@ -337,23 +396,31 @@ impl<'a> Parser<'a> {
             })?
             .to_owned();
 
-        Some(Box::new(Expr::Call(callee, paren, Box::from(arguments))))
+        Some(Box::new(Expr::Call {
+            callee,
+            paren,
+            arguments: Box::from(arguments),
+        }))
     }
 
     fn primary(&mut self) -> Option<Box<Expr>> {
-        let expr = if self.match_single(&TokenKind::False) {
+        let expr = if self.match_only(&TokenKind::False) {
             Expr::from(false)
-        } else if self.match_single(&TokenKind::True) {
+        } else if self.match_only(&TokenKind::True) {
             Expr::from(true)
-        } else if self.match_single(&TokenKind::Nil) {
+        } else if self.match_only(&TokenKind::Nil) {
             Expr::from(())
         } else if let Some(literal) = self.literal() {
             literal
-        } else if self.match_single(&TokenKind::Identifier) {
+        } else if self.match_only(&TokenKind::This) {
+            Expr::This {
+                keyword: self.previous().to_owned(),
+            }
+        } else if self.match_only(&TokenKind::Identifier) {
             Expr::Variable(self.previous().to_owned())
-        } else if self.match_single(&TokenKind::Fun) {
+        } else if self.match_only(&TokenKind::Fun) {
             self.anonymous_function()?
-        } else if self.match_single(&TokenKind::LeftParen) {
+        } else if self.match_only(&TokenKind::LeftParen) {
             let expr = self.expression()?;
             self.consume(&TokenKind::RightParen, || {
                 "Expect ')' after expression.".into()
@@ -382,10 +449,10 @@ impl<'a> Parser<'a> {
     }
 
     fn anonymous_function(&mut self) -> Option<Expr> {
-        self.function_expression("function", None)
+        self.function_literal("function", None).map(Expr::from)
     }
 
-    fn function_expression(&mut self, kind: &str, name: Option<Token>) -> Option<Expr> {
+    fn function_literal(&mut self, kind: &str, name: Option<Token>) -> Option<Function> {
         self.consume(&TokenKind::LeftParen, || {
             format!("Expect '(' after {kind} name.")
         })?;
@@ -402,7 +469,7 @@ impl<'a> Parser<'a> {
                     })?
                     .to_owned(),
                 );
-                if !self.match_single(&TokenKind::Comma) {
+                if !self.match_only(&TokenKind::Comma) {
                     break;
                 }
             }
@@ -414,7 +481,7 @@ impl<'a> Parser<'a> {
             format!("Expect '{{' before {kind} body.")
         })?;
         let body = self.stmt_vec()?;
-        Some(Expr::Function(name, Rc::from(parameters), body))
+        Some(Function::new(name, Rc::from(parameters), body))
     }
 
     fn match_any(&mut self, kinds: &[TokenKind]) -> bool {
@@ -427,7 +494,7 @@ impl<'a> Parser<'a> {
         false
     }
 
-    fn match_single(&mut self, kind: &TokenKind) -> bool {
+    fn match_only(&mut self, kind: &TokenKind) -> bool {
         if self.check(kind) {
             self.advance();
             true
@@ -519,7 +586,7 @@ mod tests {
     fn parsing_expressions_works() {
         assert_eq!(
             test_parse_expr("2+2").unwrap().as_ref(),
-            &Expr::Binary(
+            &Expr::binary(
                 Box::new(Expr::from(2.0)),
                 Token::new(TokenKind::Plus, "+".into(), 1),
                 Box::new(Expr::from(2.0))
@@ -527,10 +594,10 @@ mod tests {
         );
         assert_eq!(
             test_parse_expr("1+2*3").unwrap().as_ref(),
-            &Expr::Binary(
+            &Expr::binary(
                 Box::new(Expr::from(1.0)),
                 Token::new(TokenKind::Plus, "+".into(), 1),
-                Box::new(Expr::Binary(
+                Box::new(Expr::binary(
                     Box::new(Expr::from(2.0)),
                     Token::new(TokenKind::Star, "*".into(), 1),
                     Box::new(Expr::from(3.0))
@@ -539,8 +606,8 @@ mod tests {
         );
         assert_eq!(
             test_parse_expr("(1+2)*3").unwrap().as_ref(),
-            &Expr::Binary(
-                Box::new(Expr::Grouping(Box::new(Expr::Binary(
+            &Expr::binary(
+                Box::new(Expr::Grouping(Box::new(Expr::binary(
                     Box::new(Expr::from(1.0)),
                     Token::new(TokenKind::Plus, "+".into(), 1),
                     Box::new(Expr::from(2.0))
@@ -551,8 +618,8 @@ mod tests {
         );
         assert_eq!(
             test_parse_expr("1 + 2 + 3").unwrap().as_ref(),
-            &Expr::Binary(
-                Box::new(Expr::Binary(
+            &Expr::binary(
+                Box::new(Expr::binary(
                     Box::new(Expr::from(1.0)),
                     Token::new(TokenKind::Plus, "+".into(), 1),
                     Box::new(Expr::from(2.0))
@@ -567,7 +634,7 @@ mod tests {
     fn parsing_comperison_works() {
         assert_eq!(
             test_parse_expr("2 < 3").unwrap().as_ref(),
-            &Expr::Binary(
+            &Expr::binary(
                 Box::new(Expr::from(2.0)),
                 Token::new(TokenKind::Less, "<".into(), 1),
                 Box::new(Expr::from(3.0))
@@ -579,15 +646,15 @@ mod tests {
     fn parsing_ternary_works() {
         assert_eq!(
             test_parse_expr("2 < 3 ? 4 : 5").unwrap().as_ref(),
-            &Expr::Ternary(
-                Box::new(Expr::Binary(
+            &Expr::Ternary {
+                condition: Box::new(Expr::binary(
                     Box::new(Expr::from(2.0)),
                     Token::new(TokenKind::Less, "<".into(), 1),
                     Box::new(Expr::from(3.0))
                 )),
-                Box::new(Expr::from(4.0)),
-                Box::new(Expr::from(5.0))
-            )
+                then_expr: Box::new(Expr::from(4.0)),
+                else_expr: Box::new(Expr::from(5.0))
+            }
         );
     }
 
@@ -595,14 +662,14 @@ mod tests {
     fn assignment_has_lower_predence_than_ternary() {
         assert_eq!(
             test_parse_expr("a = 3 ? 4 : 5").unwrap().as_ref(),
-            &Expr::Assignment(
-                Token::new(TokenKind::Identifier, "a".into(), 1),
-                Box::new(Expr::Ternary(
-                    Box::new(Expr::from(3.0)),
-                    Box::new(Expr::from(4.0)),
-                    Box::new(Expr::from(5.0))
-                ))
-            )
+            &Expr::Assignment {
+                name: Token::new(TokenKind::Identifier, "a".into(), 1),
+                value: Box::new(Expr::Ternary {
+                    condition: Box::new(Expr::from(3.0)),
+                    then_expr: Box::new(Expr::from(4.0)),
+                    else_expr: Box::new(Expr::from(5.0))
+                })
+            }
         );
     }
 

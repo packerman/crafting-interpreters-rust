@@ -1,20 +1,24 @@
-use std::{fmt::Display, rc::Rc};
+use std::{cell::RefCell, fmt::Display, rc::Rc};
 
 use super::{
     callable::{self, Callable},
+    class::{Class, Instance},
     error::RuntimeError,
+    function::Function,
     token::Token,
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Cell(Option<Rc<Value>>);
+pub struct Cell(Option<Value>);
 
 #[derive(Debug, Clone)]
 pub enum Value {
     Boolean(bool),
     Number(f64),
     String(Rc<str>),
-    Callable(Rc<dyn Callable>),
+    Function(Rc<dyn Callable>),
+    Class(Rc<Class>),
+    Instance(Rc<RefCell<Instance>>),
 }
 
 impl PartialEq for Value {
@@ -23,7 +27,7 @@ impl PartialEq for Value {
             (Self::Boolean(left), Self::Boolean(right)) => left == right,
             (Self::Number(left), Self::Number(right)) => left == right,
             (Self::String(left), Self::String(right)) => left == right,
-            (Self::Callable(left), Self::Callable(right)) => {
+            (Self::Function(left), Self::Function(right)) => {
                 callable::ptr_eq(left.as_ref(), right.as_ref())
             }
             _ => false,
@@ -33,7 +37,7 @@ impl PartialEq for Value {
 
 impl From<Value> for Cell {
     fn from(value: Value) -> Self {
-        Self(Some(Rc::new(value)))
+        Self(Some(value))
     }
 }
 
@@ -53,8 +57,8 @@ impl TryFrom<Cell> for f64 {
     type Error = String;
 
     fn try_from(value: Cell) -> Result<Self, Self::Error> {
-        if let Some(Value::Number(v)) = value.0.as_deref() {
-            Ok(*v)
+        if let Some(Value::Number(v)) = value.0 {
+            Ok(v)
         } else {
             Err(String::from("Expect number."))
         }
@@ -71,10 +75,10 @@ impl TryFrom<Cell> for Rc<str> {
     type Error = String;
 
     fn try_from(value: Cell) -> Result<Self, Self::Error> {
-        if let Some(Value::String(v)) = value.0.as_deref() {
-            Ok(Rc::clone(v))
+        if let Some(Value::String(v)) = value.0 {
+            Ok(v)
         } else {
-            Err(String::from("Expect number."))
+            Err(String::from("Expect string."))
         }
     }
 }
@@ -83,10 +87,10 @@ impl TryFrom<Cell> for String {
     type Error = String;
 
     fn try_from(value: Cell) -> Result<Self, Self::Error> {
-        if let Some(Value::String(v)) = value.0.as_deref() {
+        if let Some(Value::String(v)) = value.0 {
             Ok(v.to_string())
         } else {
-            Err(String::from("Expect number."))
+            Err(String::from("Expect string."))
         }
     }
 }
@@ -99,7 +103,13 @@ impl From<()> for Cell {
 
 impl From<Rc<dyn Callable>> for Cell {
     fn from(value: Rc<dyn Callable>) -> Self {
-        Cell::from(Value::Callable(value))
+        Cell::from(Value::Function(value))
+    }
+}
+
+impl From<Rc<Function>> for Cell {
+    fn from(value: Rc<Function>) -> Self {
+        Cell::from(Value::Function(value))
     }
 }
 
@@ -107,8 +117,10 @@ impl TryFrom<Cell> for Rc<dyn Callable> {
     type Error = RuntimeError;
 
     fn try_from(value: Cell) -> Result<Self, Self::Error> {
-        if let Some(Value::Callable(value)) = value.0.as_deref() {
-            Ok(Rc::clone(value))
+        if let Some(Value::Function(value)) = value.0 {
+            Ok(value)
+        } else if let Some(Value::Class(class)) = value.0 {
+            Ok(class)
         } else {
             Err(RuntimeError::from(String::from(
                 "Can only call functions and classes.",
@@ -117,33 +129,61 @@ impl TryFrom<Cell> for Rc<dyn Callable> {
     }
 }
 
+impl TryFrom<Cell> for Rc<RefCell<Instance>> {
+    type Error = RuntimeError;
+
+    fn try_from(value: Cell) -> Result<Self, Self::Error> {
+        if let Some(Value::Instance(value)) = value.0 {
+            Ok(value)
+        } else {
+            Err(RuntimeError::from(String::from(
+                "Only instances have properties.",
+            )))
+        }
+    }
+}
+
+impl From<Rc<Class>> for Cell {
+    fn from(value: Rc<Class>) -> Self {
+        Cell::from(Value::Class(value))
+    }
+}
+
+impl From<Rc<RefCell<Instance>>> for Cell {
+    fn from(value: Rc<RefCell<Instance>>) -> Self {
+        Cell::from(Value::Instance(value))
+    }
+}
+
 impl Display for Cell {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0.as_deref() {
+        match &self.0 {
             Some(Value::Boolean(value)) => write!(f, "{value}"),
             None => write!(f, "nil"),
             Some(Value::Number(value)) => write!(f, "{value}"),
             Some(Value::String(value)) => write!(f, "{value}"),
-            Some(Value::Callable(value)) => write!(f, "<function@{value:p}>"),
+            Some(Value::Function(value)) => write!(f, "<function@{value:p}>"),
+            Some(Value::Class(value)) => write!(f, "{value}"),
+            Some(Value::Instance(value)) => write!(f, "{}", value.borrow()),
         }
     }
 }
 
 impl Cell {
     pub fn is_truthy(&self) -> bool {
-        match self.0.as_deref() {
+        match self.0 {
             None => false,
-            Some(Value::Boolean(value)) => value.to_owned(),
+            Some(Value::Boolean(value)) => value,
             _ => true,
         }
     }
 
     pub fn is_number(&self) -> bool {
-        matches!(self.0.as_deref(), Some(Value::Number(..)))
+        matches!(self.0, Some(Value::Number(..)))
     }
 
     pub fn is_string(&self) -> bool {
-        matches!(self.0.as_deref(), Some(Value::String(..)))
+        matches!(self.0, Some(Value::String(..)))
     }
 }
 

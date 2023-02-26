@@ -2,20 +2,95 @@ use std::rc::Rc;
 
 use super::{stmt::Stmt, token::Token, value::Cell};
 
-pub type Operator = Token;
-
 #[derive(Debug, PartialEq)]
 pub enum Expr {
-    Binary(Box<Expr>, Operator, Box<Expr>),
-    Call(Box<Expr>, Token, Box<[Box<Expr>]>),
-    Unary(Operator, Box<Expr>),
+    Binary {
+        left: Box<Expr>,
+        operator: Token,
+        right: Box<Expr>,
+    },
+    Call {
+        callee: Box<Expr>,
+        paren: Token,
+        arguments: Box<[Box<Expr>]>,
+    },
+    Unary {
+        operator: Token,
+        operand: Box<Expr>,
+    },
     Literal(Cell),
     Grouping(Box<Expr>),
-    Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
+    Ternary {
+        condition: Box<Expr>,
+        then_expr: Box<Expr>,
+        else_expr: Box<Expr>,
+    },
     Variable(Token),
-    Assignment(Token, Box<Expr>),
-    Logical(Box<Expr>, Token, Box<Expr>),
-    Function(Option<Token>, Rc<[Token]>, Rc<[Box<Stmt>]>),
+    Assignment {
+        name: Token,
+        value: Box<Expr>,
+    },
+    Logical {
+        left: Box<Expr>,
+        operator: Token,
+        right: Box<Expr>,
+    },
+    Function(Function),
+    Get {
+        object: Box<Expr>,
+        name: Token,
+    },
+    Set {
+        object: Box<Expr>,
+        name: Token,
+        value: Box<Expr>,
+    },
+    This {
+        keyword: Token,
+    },
+}
+
+impl Expr {
+    pub fn binary(left: Box<Expr>, operator: Token, right: Box<Expr>) -> Self {
+        Self::Binary {
+            left,
+            operator,
+            right,
+        }
+    }
+
+    pub fn function(name: Option<Token>, parameters: Rc<[Token]>, body: Rc<[Box<Stmt>]>) -> Self {
+        Self::Function(Function::new(name, parameters, body))
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Function {
+    name: Option<Token>,
+    parameters: Rc<[Token]>,
+    body: Rc<[Box<Stmt>]>,
+}
+
+impl Function {
+    pub fn new(name: Option<Token>, parameters: Rc<[Token]>, body: Rc<[Box<Stmt>]>) -> Self {
+        Self {
+            name,
+            parameters,
+            body,
+        }
+    }
+
+    pub fn name(&self) -> Option<&Token> {
+        self.name.as_ref()
+    }
+
+    pub fn parameters(&self) -> &Rc<[Token]> {
+        &self.parameters
+    }
+
+    pub fn body(&self) -> &Rc<[Box<Stmt>]> {
+        &self.body
+    }
 }
 
 impl From<bool> for Expr {
@@ -39,6 +114,12 @@ impl From<Rc<str>> for Expr {
 impl From<()> for Expr {
     fn from(_value: ()) -> Self {
         Self::Literal(Cell::from(()))
+    }
+}
+
+impl From<Function> for Expr {
+    fn from(value: Function) -> Self {
+        Self::Function(value)
     }
 }
 

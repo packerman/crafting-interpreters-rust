@@ -8,6 +8,7 @@ use crate::walk_tree::error::RuntimeError;
 use crate::walk_tree::stmt::Stmt;
 
 use super::callable::{Callable, ExecutionContext};
+use super::class::{Class, Instance};
 use super::control_flow::ControlFlow;
 use super::environment::Environment;
 use super::function::Function;
@@ -15,7 +16,7 @@ use super::native;
 use super::resolver::Resolve;
 use super::{
     error::ErrorReporter,
-    expr::Expr,
+    expr::{Expr, Function as FunctionExpr},
     token::{Token, TokenKind},
     value::{self, Cell},
 };
@@ -69,28 +70,40 @@ where
         match expr {
             Expr::Literal(literal) => self.evaluate_literal(literal),
             Expr::Grouping(expr) => self.evaluate(expr, env),
-            Expr::Unary(operator, operand) => self.evaluate_unary(operator, operand, env),
-            Expr::Binary(left, operator, right) => self.evaluate_binary(left, operator, right, env),
-            Expr::Function(name, parameters, body) => {
-                let function = Function::init(
-                    name.to_owned(),
-                    parameters.to_owned(),
-                    body.to_owned(),
-                    Rc::clone(env),
-                );
+            Expr::Unary { operator, operand } => self.evaluate_unary(operator, operand, env),
+            Expr::Binary {
+                left,
+                operator,
+                right,
+            } => self.evaluate_binary(left, operator, right, env),
+            Expr::Function(function) => {
+                let function: Rc<dyn Callable> = Function::new(function, Rc::clone(env), false);
                 Ok(Cell::from(function))
             }
-            Expr::Call(callee, paren, arguments) => {
-                self.evaluate_call(callee, paren, arguments, env)
-            }
-            Expr::Logical(left, operator, right) => {
-                self.evaluate_logical(left, operator, right, env)
-            }
-            Expr::Ternary(condition, then_expr, else_expr) => {
-                self.evaluate_ternary(condition, then_expr, else_expr, env)
-            }
+            Expr::Call {
+                callee,
+                paren,
+                arguments,
+            } => self.evaluate_call(callee, paren, arguments, env),
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => self.evaluate_logical(left, operator, right, env),
+            Expr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+            } => self.evaluate_ternary(condition, then_expr, else_expr, env),
             Expr::Variable(name) => self.evaluate_variable_expr(expr, name, env),
-            Expr::Assignment(name, value) => self.execute_assign_expr(expr, name, value, env),
+            Expr::Assignment { name, value } => self.evaluate_assign_expr(expr, name, value, env),
+            Expr::Get { object, name } => self.evaluate_get_expr(object, name, env),
+            Expr::Set {
+                object,
+                name,
+                value,
+            } => self.evaluate_set_expr(object, name, value, env),
+            Expr::This { keyword } => self.evaluate_this_expr(expr, keyword, env),
         }
     }
 
@@ -109,14 +122,19 @@ where
         match stmt {
             Stmt::Block(stmts) => self.execute_block_stmt(stmts, env),
             Stmt::Expr(expr) => self.execute_expression_stmt(expr, env),
-            Stmt::If(condition, then_branch, else_branch) => {
-                self.execute_if_stmt(condition, then_branch, else_branch.as_deref(), env)
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => self.execute_if_stmt(condition, then_branch, else_branch.as_deref(), env),
+            Stmt::Return { keyword, expr } => {
+                self.execute_return_stmt(keyword, expr.as_deref(), env)
             }
-            Stmt::Return(keyword, expr) => self.execute_return_stmt(keyword, expr.as_deref(), env),
-            Stmt::While(condition, body) => self.execute_while_stmt(condition, body, env),
-            Stmt::VarDeclaration(name, initializer) => {
+            Stmt::While { condition, body } => self.execute_while_stmt(condition, body, env),
+            Stmt::VarDeclaration { name, initializer } => {
                 self.execute_var_stmt(name, initializer.as_deref(), env)
             }
+            Stmt::Class { name, methods } => self.execute_class_stmt(name, methods, env),
         }
     }
 
@@ -194,7 +212,7 @@ where
         Ok(())
     }
 
-    fn execute_assign_expr(
+    fn evaluate_assign_expr(
         &mut self,
         expr: *const Expr,
         name: &Token,
@@ -223,7 +241,7 @@ where
         let right = self.evaluate(right, env)?;
         match operator.kind {
             TokenKind::Minus => {
-                self.check_number_operand(operator, &right)?;
+                Self::check_number_operand(operator, &right)?;
                 value::unary_operation(|a: f64| -a, operator, right)
             }
             TokenKind::Bang => Ok(Cell::from(!right.is_truthy())),
@@ -242,7 +260,7 @@ where
         let right = self.evaluate(right, env)?;
         match operator.kind {
             TokenKind::Minus => {
-                self.check_number_operands(operator, &left, &right)?;
+                Self::check_number_operands(operator, &left, &right)?;
                 value::binary_operation(|a: f64, b: f64| a - b, left, operator, right)
             }
             TokenKind::Plus => {
@@ -256,34 +274,34 @@ where
                         right,
                     )
                 } else {
-                    Err(RuntimeError::new(
+                    Self::runtime_error(
                         operator.to_owned(),
                         "Operands must be two numbers or two string.",
-                    ))?
+                    )
                 }
             }
             TokenKind::Slash => {
-                self.check_number_operands(operator, &left, &right)?;
+                Self::check_number_operands(operator, &left, &right)?;
                 value::binary_operation(|a: f64, b: f64| a / b, left, operator, right)
             }
             TokenKind::Star => {
-                self.check_number_operands(operator, &left, &right)?;
+                Self::check_number_operands(operator, &left, &right)?;
                 value::binary_operation(|a: f64, b: f64| a * b, left, operator, right)
             }
             TokenKind::Greater => {
-                self.check_number_operands(operator, &left, &right)?;
+                Self::check_number_operands(operator, &left, &right)?;
                 value::binary_operation(|a: f64, b| a > b, left, operator, right)
             }
             TokenKind::GreaterEqual => {
-                self.check_number_operands(operator, &left, &right)?;
+                Self::check_number_operands(operator, &left, &right)?;
                 value::binary_operation(|a: f64, b| a >= b, left, operator, right)
             }
             TokenKind::Less => {
-                self.check_number_operands(operator, &left, &right)?;
+                Self::check_number_operands(operator, &left, &right)?;
                 value::binary_operation(|a: f64, b| a < b, left, operator, right)
             }
             TokenKind::LessEqual => {
-                self.check_number_operands(operator, &left, &right)?;
+                Self::check_number_operands(operator, &left, &right)?;
                 value::binary_operation(|a: f64, b| a <= b, left, operator, right)
             }
             TokenKind::BangEqual => Ok(Cell::from(left != right)),
@@ -305,14 +323,14 @@ where
 
         let function = <Rc<dyn Callable>>::try_from(callee)?;
         if arguments.len() != function.arity() {
-            Err(RuntimeError::new(
+            Self::runtime_error(
                 paren.to_owned(),
                 &format!(
                     "Expected {} arguments but got {}.",
                     function.arity(),
                     arguments.len()
                 ),
-            ))
+            )
         } else {
             function.call(self, &arguments)
         }
@@ -363,33 +381,6 @@ where
         }
     }
 
-    fn check_number_operand(&self, operator: &Token, operand: &Cell) -> Result<(), RuntimeError> {
-        if operand.is_number() {
-            Ok(())
-        } else {
-            Err(RuntimeError::new(
-                operator.to_owned(),
-                "Operand must be a number.",
-            ))
-        }
-    }
-
-    fn check_number_operands(
-        &self,
-        operator: &Token,
-        left: &Cell,
-        right: &Cell,
-    ) -> Result<(), RuntimeError> {
-        if left.is_number() && right.is_number() {
-            Ok(())
-        } else {
-            Err(RuntimeError::new(
-                operator.to_owned(),
-                "Operand must be numbers.",
-            ))
-        }
-    }
-
     fn evaluate_variable_expr(
         &self,
         expr: &Expr,
@@ -410,6 +401,88 @@ where
         } else {
             self.globals.borrow().get(name)
         }
+    }
+
+    fn execute_class_stmt(
+        &self,
+        name: &Token,
+        method_exprs: &[FunctionExpr],
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<(), ControlFlow> {
+        env.borrow_mut()
+            .define(Rc::clone(name.lexeme()), Cell::from(()));
+        let methods = method_exprs
+            .iter()
+            .map(|method| {
+                let name = method.name().expect("Method has a name").lexeme();
+                (
+                    Rc::clone(name),
+                    Function::new(method, Rc::clone(env), name.as_ref() == "init"),
+                )
+            })
+            .collect();
+        let class = Class::new(Rc::clone(name.lexeme()), methods);
+        env.borrow_mut().assign(name, Cell::from(class))?;
+        Ok(())
+    }
+
+    fn evaluate_get_expr(
+        &mut self,
+        object: &Expr,
+        name: &Token,
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
+        let object = self.evaluate(object, env)?;
+        let instance = <Rc<RefCell<Instance>>>::try_from(object)?;
+        let value = instance.borrow().get(name)?;
+        Ok(value)
+    }
+
+    fn evaluate_set_expr(
+        &mut self,
+        object: &Expr,
+        name: &Token,
+        value: &Expr,
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
+        let object = self.evaluate(object, env)?;
+        let instance = <Rc<RefCell<Instance>>>::try_from(object)?;
+        let value = self.evaluate(value, env)?;
+        instance.borrow_mut().set(name, value.clone());
+        Ok(value)
+    }
+
+    fn evaluate_this_expr(
+        &self,
+        expr: &Expr,
+        keyword: &Token,
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<Cell, RuntimeError> {
+        self.look_up_variable(keyword, expr, env)
+    }
+
+    fn check_number_operand(operator: &Token, operand: &Cell) -> Result<(), RuntimeError> {
+        if operand.is_number() {
+            Ok(())
+        } else {
+            Self::runtime_error(operator.to_owned(), "Operand must be a number.")
+        }
+    }
+
+    fn check_number_operands(
+        operator: &Token,
+        left: &Cell,
+        right: &Cell,
+    ) -> Result<(), RuntimeError> {
+        if left.is_number() && right.is_number() {
+            Ok(())
+        } else {
+            Self::runtime_error(operator.to_owned(), "Operand must be numbers.")
+        }
+    }
+
+    fn runtime_error<T>(token: Token, message: &str) -> Result<T, RuntimeError> {
+        Err(RuntimeError::new(token, message))
     }
 }
 
@@ -783,6 +856,90 @@ mod tests {
         "#,
             b"global\nglobal\n",
         )
+    }
+
+    #[test]
+    fn classes_works() {
+        assert_prints(
+            r#"
+            class DevonshireCream {
+                serveOn() {
+                    return "Scones";
+                }
+            }
+            print(DevonshireCream);
+        "#,
+            b"DevonshireCream\n",
+        )
+    }
+
+    #[test]
+    fn creating_instances_works() {
+        assert_prints(
+            r#"
+            class Bagel {}
+            var bagel = Bagel();    
+            print(bagel);
+            "#,
+            b"Bagel instance\n",
+        )
+    }
+
+    #[test]
+    fn methods_work() {
+        assert_prints(
+            r#"
+            class Say {
+               hello() {
+                    print("Hello");
+               } 
+            }
+
+            Say().hello();            
+        "#,
+            b"Hello\n",
+        )
+    }
+
+    #[test]
+    fn this_works() {
+        assert_prints(
+            r#"
+            class Cake {
+                taste() {
+                    var adjective = "delicious";
+                    print("The " + this.flavor + " cake is " + adjective + "!");
+                }
+            }
+
+            var cake = Cake();
+            cake.flavor = "German chocolate";
+            cake.taste();
+        "#,
+            b"The German chocolate cake is delicious!\n",
+        );
+    }
+
+    #[test]
+    fn constructor_works() {
+        assert_prints(
+            r#"
+            class Rectangle {
+                init(a, b) {
+                    this.a = a;
+                    this.b = b;
+                }
+
+                area() {
+                    return this.a * this.b;
+                }
+            }
+
+            var rect = Rectangle(10, 20);
+            print(rect.area());
+        "#,
+            b"200\n",
+        );
     }
 
     fn assert_evaluates_to<T>(source: &str, value: T)
