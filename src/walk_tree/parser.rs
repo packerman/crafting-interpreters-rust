@@ -64,11 +64,11 @@ impl<'a> Parser<'a> {
     }
 
     fn try_declaration(&mut self) -> Option<Box<Stmt>> {
-        if self.match_only(&TokenKind::Class) {
+        if self.match_one(&TokenKind::Class) {
             self.class_declaration()
-        } else if self.match_only(&TokenKind::Fun) {
+        } else if self.match_one(&TokenKind::Fun) {
             self.function_declaration()
-        } else if self.match_only(&TokenKind::Var) {
+        } else if self.match_one(&TokenKind::Var) {
             self.var_declaration()
         } else {
             self.statement()
@@ -76,15 +76,15 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> Option<Box<Stmt>> {
-        if self.match_only(&TokenKind::For) {
+        if self.match_one(&TokenKind::For) {
             self.for_statement()
-        } else if self.match_only(&TokenKind::If) {
+        } else if self.match_one(&TokenKind::If) {
             self.if_statement()
-        } else if self.match_only(&TokenKind::Return) {
+        } else if self.match_one(&TokenKind::Return) {
             self.return_stmt()
-        } else if self.match_only(&TokenKind::While) {
+        } else if self.match_one(&TokenKind::While) {
             self.while_statement()
-        } else if self.match_only(&TokenKind::LeftBrace) {
+        } else if self.match_one(&TokenKind::LeftBrace) {
             self.block()
         } else {
             self.expression_statement()
@@ -93,9 +93,9 @@ impl<'a> Parser<'a> {
 
     fn for_statement(&mut self) -> Option<Box<Stmt>> {
         self.consume(&TokenKind::LeftParen, || "Expect '(' after 'for'.".into())?;
-        let initializer = if self.match_only(&TokenKind::Semicolon) {
+        let initializer = if self.match_one(&TokenKind::Semicolon) {
             None
-        } else if self.match_only(&TokenKind::Var) {
+        } else if self.match_one(&TokenKind::Var) {
             Some(self.var_declaration()?)
         } else {
             Some(self.expression_statement()?)
@@ -140,7 +140,7 @@ impl<'a> Parser<'a> {
         })?;
 
         let then_branch = self.statement()?;
-        let else_branch = if self.match_only(&TokenKind::Else) {
+        let else_branch = if self.match_one(&TokenKind::Else) {
             Some(self.statement()?)
         } else {
             None
@@ -174,7 +174,7 @@ impl<'a> Parser<'a> {
                 "Expect variable name.".to_string()
             })?
             .to_owned();
-        let initializer = if self.match_only(&TokenKind::Equal) {
+        let initializer = if self.match_one(&TokenKind::Equal) {
             self.expression()
         } else {
             None
@@ -207,6 +207,12 @@ impl<'a> Parser<'a> {
         let name = self
             .consume(&TokenKind::Identifier, || "Expect class name.".into())?
             .to_owned();
+        let superclass = if self.match_one(&TokenKind::Less) {
+            self.consume(&TokenKind::Identifier, || "Expect superclass name.".into())?;
+            Some(Box::new(Expr::Variable(self.previous().to_owned())))
+        } else {
+            None
+        };
         self.consume(&TokenKind::LeftBrace, || {
             "Expect '{' before class body.".into()
         })?;
@@ -219,6 +225,7 @@ impl<'a> Parser<'a> {
         })?;
         Some(Box::new(Stmt::Class {
             name,
+            superclass,
             methods: Box::from(methods),
         }))
     }
@@ -255,7 +262,7 @@ impl<'a> Parser<'a> {
 
     fn assigment(&mut self) -> Option<Box<Expr>> {
         let expr = self.ternary()?;
-        if self.match_only(&TokenKind::Equal) {
+        if self.match_one(&TokenKind::Equal) {
             let equals = self.previous().to_owned();
             let value = self.assigment()?;
             match *expr {
@@ -274,7 +281,7 @@ impl<'a> Parser<'a> {
 
     fn ternary(&mut self) -> Option<Box<Expr>> {
         let expr = self.or()?;
-        if self.match_only(&TokenKind::QuestionMark) {
+        if self.match_one(&TokenKind::QuestionMark) {
             let then_expr = self.expression()?;
             self.consume(&TokenKind::Colon, || "Expect ':'.".into());
             let else_expr = self.expression()?;
@@ -302,7 +309,7 @@ impl<'a> Parser<'a> {
     {
         let mut expr = operand(self)?;
 
-        while self.match_only(token_kind) {
+        while self.match_one(token_kind) {
             let operator = self.previous().to_owned();
             let right = operand(self)?;
             expr = Box::new(Expr::Logical {
@@ -335,7 +342,7 @@ impl<'a> Parser<'a> {
         F: FnMut(&mut Self) -> Option<Box<Expr>>,
     {
         let mut expr = operand(self)?;
-        while self.match_any(operators) {
+        while self.match_many(operators) {
             expr = Box::new(Expr::binary(
                 expr,
                 self.previous().to_owned(),
@@ -346,7 +353,7 @@ impl<'a> Parser<'a> {
     }
 
     fn unary(&mut self) -> Option<Box<Expr>> {
-        if self.match_any(&Self::UNARY_OPERATORS) {
+        if self.match_many(&Self::UNARY_OPERATORS) {
             let operator = self.previous().to_owned();
             let right = self.unary()?;
             Some(Box::new(Expr::Unary {
@@ -361,9 +368,9 @@ impl<'a> Parser<'a> {
     fn call(&mut self) -> Option<Box<Expr>> {
         let mut expr = self.primary()?;
         loop {
-            if self.match_only(&TokenKind::LeftParen) {
+            if self.match_one(&TokenKind::LeftParen) {
                 expr = self.finish_call(expr)?;
-            } else if self.match_only(&TokenKind::Dot) {
+            } else if self.match_one(&TokenKind::Dot) {
                 let name = self
                     .consume(&TokenKind::Identifier, || {
                         "Expect property name after '.'.".into()
@@ -385,7 +392,7 @@ impl<'a> Parser<'a> {
                     self.error::<()>(self.peek(), "Can't have more than 255 arguments.");
                 }
                 arguments.push(self.expression()?);
-                if !self.match_only(&TokenKind::Comma) {
+                if !self.match_one(&TokenKind::Comma) {
                     break;
                 }
             }
@@ -404,23 +411,23 @@ impl<'a> Parser<'a> {
     }
 
     fn primary(&mut self) -> Option<Box<Expr>> {
-        let expr = if self.match_only(&TokenKind::False) {
+        let expr = if self.match_one(&TokenKind::False) {
             Expr::from(false)
-        } else if self.match_only(&TokenKind::True) {
+        } else if self.match_one(&TokenKind::True) {
             Expr::from(true)
-        } else if self.match_only(&TokenKind::Nil) {
+        } else if self.match_one(&TokenKind::Nil) {
             Expr::from(())
         } else if let Some(literal) = self.literal() {
             literal
-        } else if self.match_only(&TokenKind::This) {
+        } else if self.match_one(&TokenKind::This) {
             Expr::This {
                 keyword: self.previous().to_owned(),
             }
-        } else if self.match_only(&TokenKind::Identifier) {
+        } else if self.match_one(&TokenKind::Identifier) {
             Expr::Variable(self.previous().to_owned())
-        } else if self.match_only(&TokenKind::Fun) {
+        } else if self.match_one(&TokenKind::Fun) {
             self.anonymous_function()?
-        } else if self.match_only(&TokenKind::LeftParen) {
+        } else if self.match_one(&TokenKind::LeftParen) {
             let expr = self.expression()?;
             self.consume(&TokenKind::RightParen, || {
                 "Expect ')' after expression.".into()
@@ -469,7 +476,7 @@ impl<'a> Parser<'a> {
                     })?
                     .to_owned(),
                 );
-                if !self.match_only(&TokenKind::Comma) {
+                if !self.match_one(&TokenKind::Comma) {
                     break;
                 }
             }
@@ -484,7 +491,7 @@ impl<'a> Parser<'a> {
         Some(Function::new(name, Rc::from(parameters), body))
     }
 
-    fn match_any(&mut self, kinds: &[TokenKind]) -> bool {
+    fn match_many(&mut self, kinds: &[TokenKind]) -> bool {
         for kind in kinds {
             if self.check(kind) {
                 self.advance();
@@ -494,7 +501,7 @@ impl<'a> Parser<'a> {
         false
     }
 
-    fn match_only(&mut self, kind: &TokenKind) -> bool {
+    fn match_one(&mut self, kind: &TokenKind) -> bool {
         if self.check(kind) {
             self.advance();
             true

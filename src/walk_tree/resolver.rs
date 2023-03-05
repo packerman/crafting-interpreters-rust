@@ -51,7 +51,11 @@ impl<'a> Resolver<'a> {
             Stmt::VarDeclaration { name, initializer } => {
                 self.resolve_var_stmt(name, initializer.as_deref())
             }
-            Stmt::Class { name, methods } => self.resolve_class_stmt(name, methods),
+            Stmt::Class {
+                name,
+                superclass,
+                methods,
+            } => self.resolve_class_stmt(name, superclass.as_deref(), methods),
         }
     }
 
@@ -251,12 +255,27 @@ impl<'a> Resolver<'a> {
         self.resolve_expr(else_expr)
     }
 
-    fn resolve_class_stmt(&mut self, name: &Token, methods: &[Function]) {
+    fn resolve_class_stmt(
+        &mut self,
+        name: &Token,
+        superclass: Option<&Expr>,
+        methods: &[Function],
+    ) {
         let enclosing_class = self.current_class;
         self.current_class = Some(ClassType::Class);
 
         self.declare(name);
         self.define(name);
+
+        if let Some(superclass) = superclass {
+            let superclass_name = superclass.as_variable().expect("Expect identifier.");
+            if name.lexeme() == superclass_name.lexeme() {
+                self.error_reporter
+                    .token_error(superclass_name, "A class can't inherit from itself.");
+            }
+
+            self.resolve_expr(superclass);
+        }
 
         self.begin_scope();
         if let Some(scope) = self.scopes.last_mut() {

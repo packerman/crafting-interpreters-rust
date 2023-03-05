@@ -134,7 +134,11 @@ where
             Stmt::VarDeclaration { name, initializer } => {
                 self.execute_var_stmt(name, initializer.as_deref(), env)
             }
-            Stmt::Class { name, methods } => self.execute_class_stmt(name, methods, env),
+            Stmt::Class {
+                name,
+                superclass,
+                methods,
+            } => self.execute_class_stmt(name, superclass.as_deref(), methods, env),
         }
     }
 
@@ -404,11 +408,17 @@ where
     }
 
     fn execute_class_stmt(
-        &self,
+        &mut self,
         name: &Token,
+        superclass_expr: Option<&Expr>,
         method_exprs: &[FunctionExpr],
         env: &Rc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow> {
+        let superclass = if let Some(superclass_expr) = superclass_expr {
+            Some(self.evaluate_superclass(superclass_expr, env)?)
+        } else {
+            None
+        };
         env.borrow_mut()
             .define(Rc::clone(name.lexeme()), Cell::from(()));
         let methods = method_exprs
@@ -421,9 +431,27 @@ where
                 )
             })
             .collect();
-        let class = Class::new(Rc::clone(name.lexeme()), methods);
+        let class = Class::new(Rc::clone(name.lexeme()), superclass, methods);
         env.borrow_mut().assign(name, Cell::from(class))?;
         Ok(())
+    }
+
+    fn evaluate_superclass(
+        &mut self,
+        expr: &Expr,
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<Rc<Class>, RuntimeError> {
+        let superclass = self.evaluate(expr, env)?;
+        if let Some(class) = superclass.as_class() {
+            Ok(Rc::clone(class))
+        } else {
+            Self::runtime_error(
+                expr.as_variable()
+                    .expect("Expect class identifier.")
+                    .to_owned(),
+                "Superclass must be a class.",
+            )
+        }
     }
 
     fn evaluate_get_expr(
@@ -940,6 +968,24 @@ mod tests {
         "#,
             b"200\n",
         );
+    }
+
+    #[test]
+    fn superclass_works() {
+        assert_prints(
+            r#"
+            class Doughnut {
+                cook() {
+                    print("Fry until golden brown.");
+                }
+            }
+
+            class BostonCream < Doughnut {}
+
+            BostonCream().cook();
+        "#,
+            b"Fry until golden brown.\n",
+        )
     }
 
     fn assert_evaluates_to<T>(source: &str, value: T)
