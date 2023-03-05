@@ -466,7 +466,7 @@ where
         env: &Rc<RefCell<Environment>>,
     ) -> Rc<RefCell<Environment>> {
         if let Some(superclass) = superclass {
-            let environment = Environment::new_with_enclosing(Rc::clone(&env));
+            let environment = Environment::new_with_enclosing(Rc::clone(env));
             environment.borrow_mut().define(
                 Rc::clone(&self.super_keyword),
                 Cell::from(Rc::clone(superclass)),
@@ -530,7 +530,7 @@ where
                 &format!("Undefined property '{}'.", method.lexeme()),
             )
         })?;
-        Ok(Cell::from(method.bind(Rc::clone(&object))))
+        Ok(Cell::from(method.bind(Rc::clone(object))))
     }
 
     fn check_number_operand(operator: &Token, operand: &Cell) -> Result<(), RuntimeError> {
