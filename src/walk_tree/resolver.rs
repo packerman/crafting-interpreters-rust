@@ -17,6 +17,7 @@ pub struct Resolver<'a> {
     scopes: Vec<HashMap<Rc<str>, bool>>,
     current_function: Option<FunctionType>,
     current_class: Option<ClassType>,
+    this_keyword: Rc<str>,
     super_keyword: Rc<str>,
 }
 
@@ -28,6 +29,7 @@ impl<'a> Resolver<'a> {
             scopes: Vec::new(),
             current_function: None,
             current_class: None,
+            this_keyword: Rc::from("this"),
             super_keyword: Rc::from("super"),
         }
     }
@@ -288,7 +290,7 @@ impl<'a> Resolver<'a> {
 
         self.begin_scope();
         if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(Rc::from("this"), true);
+            scope.insert(Rc::clone(&self.this_keyword), true);
         }
         for method in methods {
             let declaration = if method
