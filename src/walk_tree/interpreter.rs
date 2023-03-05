@@ -426,14 +426,14 @@ where
         };
         env.borrow_mut()
             .define(Rc::clone(name.lexeme()), Cell::from(()));
-        let env = self.evaluate_method_environment(superclass.as_ref(), env);
+        let method_env = self.evaluate_method_environment(superclass.as_ref(), env);
         let methods = method_exprs
             .iter()
             .map(|method| {
                 let name = method.name().expect("Method has a name").lexeme();
                 (
                     Rc::clone(name),
-                    Function::new(method, Rc::clone(&env), name.as_ref() == "init"),
+                    Function::new(method, Rc::clone(&method_env), name.as_ref() == "init"),
                 )
             })
             .collect();
