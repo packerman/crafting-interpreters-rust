@@ -17,6 +17,7 @@ pub struct Resolver<'a> {
     scopes: Vec<HashMap<Rc<str>, bool>>,
     current_function: Option<FunctionType>,
     current_class: Option<ClassType>,
+    super_keyword: Rc<str>,
 }
 
 impl<'a> Resolver<'a> {
@@ -27,6 +28,7 @@ impl<'a> Resolver<'a> {
             scopes: Vec::new(),
             current_function: None,
             current_class: None,
+            super_keyword: Rc::from("super"),
         }
     }
 
@@ -93,6 +95,7 @@ impl<'a> Resolver<'a> {
                 value,
             } => self.resolve_set_expr(object, name, value),
             Expr::This { keyword } => self.resolve_this_expr(expr, keyword),
+            Expr::Super { keyword, method } => self.resolve_super_expr(expr, keyword, method),
         }
     }
 
@@ -275,6 +278,12 @@ impl<'a> Resolver<'a> {
             }
 
             self.resolve_expr(superclass);
+
+            self.begin_scope();
+            self.scopes
+                .last_mut()
+                .unwrap()
+                .insert(Rc::clone(&self.super_keyword), true);
         }
 
         self.begin_scope();
@@ -293,6 +302,9 @@ impl<'a> Resolver<'a> {
             self.resolve_function(method, declaration);
         }
         self.end_scope();
+        if superclass.is_some() {
+            self.end_scope();
+        }
 
         self.current_class = enclosing_class;
     }
@@ -313,6 +325,10 @@ impl<'a> Resolver<'a> {
             return;
         }
 
+        self.resolve_local(expr, keyword)
+    }
+
+    fn resolve_super_expr(&mut self, expr: &Expr, keyword: &Token, _method: &Token) {
         self.resolve_local(expr, keyword)
     }
 }

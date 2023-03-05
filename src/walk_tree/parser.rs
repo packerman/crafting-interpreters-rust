@@ -419,6 +419,15 @@ impl<'a> Parser<'a> {
             Expr::from(())
         } else if let Some(literal) = self.literal() {
             literal
+        } else if self.match_one(&TokenKind::Super) {
+            let keyword = self.previous().to_owned();
+            self.consume(&TokenKind::Dot, || "Expect '.' after 'super'.".into())?;
+            let method = self
+                .consume(&TokenKind::Identifier, || {
+                    "Expect superclass method name.".into()
+                })?
+                .to_owned();
+            Expr::Super { keyword, method }
         } else if self.match_one(&TokenKind::This) {
             Expr::This {
                 keyword: self.previous().to_owned(),

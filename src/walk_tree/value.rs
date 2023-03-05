@@ -33,6 +33,14 @@ impl Value {
             None
         }
     }
+
+    pub fn as_instance(&self) -> Option<&Rc<RefCell<Instance>>> {
+        if let Self::Instance(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
 }
 
 impl PartialEq for Value {
@@ -206,6 +214,10 @@ impl Cell {
 
     pub fn as_class(&self) -> Option<&Rc<Class>> {
         self.0.as_ref().and_then(|value| value.as_class())
+    }
+
+    pub fn as_instance(&self) -> Option<&Rc<RefCell<Instance>>> {
+        self.0.as_ref().and_then(|value| value.as_instance())
     }
 }
 
