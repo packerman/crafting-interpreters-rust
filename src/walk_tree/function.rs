@@ -19,7 +19,7 @@ pub struct Function {
     body: Rc<[Box<Stmt>]>,
     closure: Rc<RefCell<Environment>>,
     is_initializer: bool,
-    this: Rc<str>,
+    this_keyword: Rc<str>,
 }
 
 impl Function {
@@ -34,22 +34,22 @@ impl Function {
             body: Rc::clone(function.body()),
             closure,
             is_initializer,
-            this: Rc::from("this"),
+            this_keyword: Rc::from("this"),
         })
     }
 
     pub fn bind(&self, instance: Rc<RefCell<Instance>>) -> Rc<Self> {
-        let environment = Rc::clone(&self.closure);
+        let environment = Environment::new_with_enclosing(Rc::clone(&self.closure));
         environment
             .borrow_mut()
-            .define(Rc::clone(&self.this), Cell::from(instance));
+            .define(Rc::clone(&self.this_keyword), Cell::from(instance));
         Rc::new(Function {
             name: self.name.clone(),
             parameters: Rc::clone(&self.parameters),
             body: Rc::clone(&self.body),
             closure: environment,
             is_initializer: self.is_initializer,
-            this: Rc::clone(&self.this),
+            this_keyword: Rc::clone(&self.this_keyword),
         })
     }
 }
@@ -73,13 +73,13 @@ impl Callable for Function {
         let result = context.execute_block(&self.body, &environment);
         match result {
             Err(ControlFlow::Return(value)) => Ok(if self.is_initializer {
-                self.closure.borrow().get_at(0, &self.this)
+                self.closure.borrow().get_at(0, &self.this_keyword)
             } else {
                 value
             }),
             Err(ControlFlow::RuntimeError(runtime_error)) => Err(runtime_error),
             _ => Ok(if self.is_initializer {
-                self.closure.borrow().get_at(0, &self.this)
+                self.closure.borrow().get_at(0, &self.this_keyword)
             } else {
                 Cell::from(())
             }),

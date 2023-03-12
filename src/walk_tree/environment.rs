@@ -8,7 +8,7 @@ use super::{error::RuntimeError, token::Token, value::Cell};
 
 #[derive(Debug)]
 pub struct Environment {
-    enclosing: Option<Rc<RefCell<Environment>>>,
+    enclosing: Option<Rc<RefCell<Self>>>,
     values: HashMap<Rc<str>, Cell>,
     me: Weak<RefCell<Self>>,
 }
@@ -18,11 +18,11 @@ impl Environment {
         Self::new(None)
     }
 
-    pub fn new_with_enclosing(enclosing: Rc<RefCell<Environment>>) -> Rc<RefCell<Self>> {
+    pub fn new_with_enclosing(enclosing: Rc<RefCell<Self>>) -> Rc<RefCell<Self>> {
         Self::new(Some(enclosing))
     }
 
-    fn new(enclosing: Option<Rc<RefCell<Environment>>>) -> Rc<RefCell<Self>> {
+    fn new(enclosing: Option<Rc<RefCell<Self>>>) -> Rc<RefCell<Self>> {
         Rc::new_cyclic(|me| {
             RefCell::new(Self {
                 enclosing,
@@ -74,7 +74,7 @@ impl Environment {
             .insert(name.lexeme().to_owned(), value);
     }
 
-    fn ancestor(&self, distance: usize) -> Rc<RefCell<Environment>> {
+    fn ancestor(&self, distance: usize) -> Rc<RefCell<Self>> {
         let mut environment = self.me.upgrade().expect("Reference exists");
         for _ in 0..distance {
             let enclosing = Rc::clone(

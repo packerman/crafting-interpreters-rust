@@ -45,6 +45,10 @@ pub enum Expr {
         name: Token,
         value: Box<Expr>,
     },
+    Super {
+        keyword: Token,
+        method: Token,
+    },
     This {
         keyword: Token,
     },
@@ -61,6 +65,14 @@ impl Expr {
 
     pub fn function(name: Option<Token>, parameters: Rc<[Token]>, body: Rc<[Box<Stmt>]>) -> Self {
         Self::Function(Function::new(name, parameters, body))
+    }
+
+    pub fn as_variable(&self) -> Option<&Token> {
+        if let Self::Variable(v) = self {
+            Some(v)
+        } else {
+            None
+        }
     }
 }
 

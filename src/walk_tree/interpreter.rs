@@ -26,6 +26,8 @@ pub struct Interpreter<'a, W> {
     output: W,
     globals: Rc<RefCell<Environment>>,
     locals: HashMap<*const Expr, usize>,
+    this_keyword: Rc<str>,
+    super_keyword: Rc<str>,
 }
 
 impl<'a, W> Interpreter<'a, W>
@@ -40,6 +42,8 @@ where
             output,
             globals,
             locals: HashMap::new(),
+            this_keyword: Rc::from("this"),
+            super_keyword: Rc::from("super"),
         }
     }
 
@@ -104,6 +108,7 @@ where
                 value,
             } => self.evaluate_set_expr(object, name, value, env),
             Expr::This { keyword } => self.evaluate_this_expr(expr, keyword, env),
+            Expr::Super { keyword, method } => self.evaluate_super_expr(expr, keyword, method, env),
         }
     }
 
@@ -134,7 +139,11 @@ where
             Stmt::VarDeclaration { name, initializer } => {
                 self.execute_var_stmt(name, initializer.as_deref(), env)
             }
-            Stmt::Class { name, methods } => self.execute_class_stmt(name, methods, env),
+            Stmt::Class {
+                name,
+                superclass,
+                methods,
+            } => self.execute_class_stmt(name, superclass.as_deref(), methods, env),
         }
     }
 
@@ -404,26 +413,68 @@ where
     }
 
     fn execute_class_stmt(
-        &self,
+        &mut self,
         name: &Token,
+        superclass_expr: Option<&Expr>,
         method_exprs: &[FunctionExpr],
         env: &Rc<RefCell<Environment>>,
     ) -> Result<(), ControlFlow> {
+        let superclass = if let Some(superclass_expr) = superclass_expr {
+            Some(self.evaluate_superclass(superclass_expr, env)?)
+        } else {
+            None
+        };
         env.borrow_mut()
             .define(Rc::clone(name.lexeme()), Cell::from(()));
+        let method_env = self.evaluate_method_environment(superclass.as_ref(), env);
         let methods = method_exprs
             .iter()
             .map(|method| {
                 let name = method.name().expect("Method has a name").lexeme();
                 (
                     Rc::clone(name),
-                    Function::new(method, Rc::clone(env), name.as_ref() == "init"),
+                    Function::new(method, Rc::clone(&method_env), name.as_ref() == "init"),
                 )
             })
             .collect();
-        let class = Class::new(Rc::clone(name.lexeme()), methods);
+        let class = Class::new(Rc::clone(name.lexeme()), superclass, methods);
         env.borrow_mut().assign(name, Cell::from(class))?;
         Ok(())
+    }
+
+    fn evaluate_superclass(
+        &mut self,
+        expr: &Expr,
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<Rc<Class>, RuntimeError> {
+        let superclass = self.evaluate(expr, env)?;
+        if let Some(class) = superclass.as_class() {
+            Ok(Rc::clone(class))
+        } else {
+            Self::runtime_error(
+                expr.as_variable()
+                    .expect("Expect class identifier.")
+                    .to_owned(),
+                "Superclass must be a class.",
+            )
+        }
+    }
+
+    fn evaluate_method_environment(
+        &self,
+        superclass: Option<&Rc<Class>>,
+        env: &Rc<RefCell<Environment>>,
+    ) -> Rc<RefCell<Environment>> {
+        if let Some(superclass) = superclass {
+            let environment = Environment::new_with_enclosing(Rc::clone(env));
+            environment.borrow_mut().define(
+                Rc::clone(&self.super_keyword),
+                Cell::from(Rc::clone(superclass)),
+            );
+            environment
+        } else {
+            Rc::clone(env)
+        }
     }
 
     fn evaluate_get_expr(
@@ -459,6 +510,27 @@ where
         env: &Rc<RefCell<Environment>>,
     ) -> Result<Cell, RuntimeError> {
         self.look_up_variable(keyword, expr, env)
+    }
+
+    fn evaluate_super_expr(
+        &self,
+        expr: *const Expr,
+        _keyword: &Token,
+        method: &Token,
+        env: &RefCell<Environment>,
+    ) -> Result<Cell, RuntimeError> {
+        let distance = *self.locals.get(&expr).unwrap();
+        let superclass = env.borrow().get_at(distance, &self.super_keyword);
+        let superclass = superclass.as_class().unwrap();
+        let object = env.borrow().get_at(distance - 1, &self.this_keyword);
+        let object = object.as_instance().unwrap();
+        let method = superclass.find_method(method.lexeme()).ok_or_else(|| {
+            RuntimeError::new(
+                method.to_owned(),
+                &format!("Undefined property '{}'.", method.lexeme()),
+            )
+        })?;
+        Ok(Cell::from(method.bind(Rc::clone(object))))
     }
 
     fn check_number_operand(operator: &Token, operand: &Cell) -> Result<(), RuntimeError> {
@@ -940,6 +1012,75 @@ mod tests {
         "#,
             b"200\n",
         );
+    }
+
+    #[test]
+    fn superclass_works() {
+        assert_prints(
+            r#"
+            class Doughnut {
+                cook() {
+                    print("Fry until golden brown.");
+                }
+            }
+
+            class BostonCream < Doughnut {}
+
+            BostonCream().cook();
+        "#,
+            b"Fry until golden brown.\n",
+        )
+    }
+
+    #[test]
+    fn super_works() {
+        assert_prints(
+            r#"
+            class Doughnut {
+                cook() {
+                    print("Fry until golden brown.");
+                }
+            }
+
+            class BostonCream < Doughnut {
+                cook() {
+                    super.cook();
+                    print("Pipe full of custard and coat with chocolate.");
+                }
+            }
+
+            BostonCream().cook();
+        "#,
+            b"Fry until golden brown.\nPipe full of custard and coat with chocolate.\n",
+        )
+    }
+
+    #[test]
+    fn super_works_2() {
+        assert_prints(
+            r#"
+            class A {
+                method() {
+                    print("A method");
+                }
+            }
+
+            class B < A {
+                method() {
+                    print("B method");
+                }
+
+                test() {
+                    super.method();
+                }
+            }
+
+            class C < B {}
+
+            C().test();
+        "#,
+            b"A method\n",
+        )
     }
 
     fn assert_evaluates_to<T>(source: &str, value: T)

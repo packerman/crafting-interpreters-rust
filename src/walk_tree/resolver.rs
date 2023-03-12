@@ -17,6 +17,8 @@ pub struct Resolver<'a> {
     scopes: Vec<HashMap<Rc<str>, bool>>,
     current_function: Option<FunctionType>,
     current_class: Option<ClassType>,
+    this_keyword: Rc<str>,
+    super_keyword: Rc<str>,
 }
 
 impl<'a> Resolver<'a> {
@@ -27,6 +29,8 @@ impl<'a> Resolver<'a> {
             scopes: Vec::new(),
             current_function: None,
             current_class: None,
+            this_keyword: Rc::from("this"),
+            super_keyword: Rc::from("super"),
         }
     }
 
@@ -51,7 +55,11 @@ impl<'a> Resolver<'a> {
             Stmt::VarDeclaration { name, initializer } => {
                 self.resolve_var_stmt(name, initializer.as_deref())
             }
-            Stmt::Class { name, methods } => self.resolve_class_stmt(name, methods),
+            Stmt::Class {
+                name,
+                superclass,
+                methods,
+            } => self.resolve_class_stmt(name, superclass.as_deref(), methods),
         }
     }
 
@@ -89,6 +97,7 @@ impl<'a> Resolver<'a> {
                 value,
             } => self.resolve_set_expr(object, name, value),
             Expr::This { keyword } => self.resolve_this_expr(expr, keyword),
+            Expr::Super { keyword, method } => self.resolve_super_expr(expr, keyword, method),
         }
     }
 
@@ -251,16 +260,37 @@ impl<'a> Resolver<'a> {
         self.resolve_expr(else_expr)
     }
 
-    fn resolve_class_stmt(&mut self, name: &Token, methods: &[Function]) {
+    fn resolve_class_stmt(
+        &mut self,
+        name: &Token,
+        superclass: Option<&Expr>,
+        methods: &[Function],
+    ) {
         let enclosing_class = self.current_class;
         self.current_class = Some(ClassType::Class);
 
         self.declare(name);
         self.define(name);
 
+        if let Some(superclass) = superclass {
+            let superclass_name = superclass.as_variable().expect("Expect identifier.");
+            if name.lexeme() == superclass_name.lexeme() {
+                self.error_reporter
+                    .token_error(superclass_name, "A class can't inherit from itself.");
+            }
+
+            self.resolve_expr(superclass);
+
+            self.begin_scope();
+            self.scopes
+                .last_mut()
+                .unwrap()
+                .insert(Rc::clone(&self.super_keyword), true);
+        }
+
         self.begin_scope();
         if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(Rc::from("this"), true);
+            scope.insert(Rc::clone(&self.this_keyword), true);
         }
         for method in methods {
             let declaration = if method
@@ -274,6 +304,9 @@ impl<'a> Resolver<'a> {
             self.resolve_function(method, declaration);
         }
         self.end_scope();
+        if superclass.is_some() {
+            self.end_scope();
+        }
 
         self.current_class = enclosing_class;
     }
@@ -294,6 +327,10 @@ impl<'a> Resolver<'a> {
             return;
         }
 
+        self.resolve_local(expr, keyword)
+    }
+
+    fn resolve_super_expr(&mut self, expr: &Expr, keyword: &Token, _method: &Token) {
         self.resolve_local(expr, keyword)
     }
 }

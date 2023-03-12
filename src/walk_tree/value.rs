@@ -21,6 +21,28 @@ pub enum Value {
     Instance(Rc<RefCell<Instance>>),
 }
 
+impl Value {
+    pub fn is_class(&self) -> bool {
+        matches!(self, Self::Class(..))
+    }
+
+    pub fn as_class(&self) -> Option<&Rc<Class>> {
+        if let Self::Class(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_instance(&self) -> Option<&Rc<RefCell<Instance>>> {
+        if let Self::Instance(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -184,6 +206,18 @@ impl Cell {
 
     pub fn is_string(&self) -> bool {
         matches!(self.0, Some(Value::String(..)))
+    }
+
+    pub fn is_class(&self) -> bool {
+        self.0.as_ref().map_or(false, |value| value.is_class())
+    }
+
+    pub fn as_class(&self) -> Option<&Rc<Class>> {
+        self.0.as_ref().and_then(|value| value.as_class())
+    }
+
+    pub fn as_instance(&self) -> Option<&Rc<RefCell<Instance>>> {
+        self.0.as_ref().and_then(|value| value.as_instance())
     }
 }
 

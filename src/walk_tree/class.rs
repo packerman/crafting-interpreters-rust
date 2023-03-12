@@ -16,21 +16,31 @@ use super::{
 #[derive(Debug, Clone)]
 pub struct Class {
     name: Rc<str>,
+    superclass: Option<Rc<Class>>,
     methods: HashMap<Rc<str>, Rc<Function>>,
     me: Weak<Self>,
 }
 
 impl Class {
-    pub fn new(name: Rc<str>, methods: HashMap<Rc<str>, Rc<Function>>) -> Rc<Self> {
+    pub fn new(
+        name: Rc<str>,
+        superclass: Option<Rc<Class>>,
+        methods: HashMap<Rc<str>, Rc<Function>>,
+    ) -> Rc<Self> {
         Rc::new_cyclic(|me| Self {
             name,
+            superclass,
             methods,
             me: me.clone(),
         })
     }
 
     pub fn find_method(&self, name: &str) -> Option<&Rc<Function>> {
-        self.methods.get(name)
+        self.methods.get(name).or_else(|| {
+            self.superclass
+                .as_ref()
+                .and_then(|superclass| superclass.find_method(name))
+        })
     }
 }
 
