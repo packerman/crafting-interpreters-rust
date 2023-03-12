@@ -39,7 +39,7 @@ impl Function {
     }
 
     pub fn bind(&self, instance: Rc<RefCell<Instance>>) -> Rc<Self> {
-        let environment = Rc::clone(&self.closure);
+        let environment = Environment::new_with_enclosing(Rc::clone(&self.closure));
         environment
             .borrow_mut()
             .define(Rc::clone(&self.this), Cell::from(instance));
