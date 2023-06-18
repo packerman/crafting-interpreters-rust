@@ -28,7 +28,6 @@ where
     type Output = Value;
 
     fn index(&self, index: T) -> &Self::Output {
-        let d = self.values[0_usize];
         &self.values[usize::from(index)]
     }
 }
