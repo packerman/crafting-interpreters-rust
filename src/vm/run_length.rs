@@ -1,6 +1,6 @@
 use std::ops::Index;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RunLength<T> {
     entries: Vec<Entry<T>>,
 }

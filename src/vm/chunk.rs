@@ -18,7 +18,7 @@ impl From<OpCode> for u8 {
 
 pub type Lines = RunLength<usize>;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Chunk {
     code: Vec<u8>,
     constants: ValueArray,

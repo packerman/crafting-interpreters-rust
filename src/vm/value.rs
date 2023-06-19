@@ -2,7 +2,7 @@ use std::ops::Index;
 
 pub type Value = f64;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ValueArray {
     values: Vec<Value>,
 }
