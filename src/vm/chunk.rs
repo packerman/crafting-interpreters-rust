@@ -1,3 +1,5 @@
+use std::ops::Index;
+
 use super::{
     run_length::RunLength,
     value::{Value, ValueArray},
@@ -61,5 +63,14 @@ impl Chunk {
 
     pub fn lines(&self) -> &Lines {
         &self.lines
+    }
+}
+
+impl Index<usize> for Chunk {
+    type Output = u8;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        self.code.index(index)
     }
 }
