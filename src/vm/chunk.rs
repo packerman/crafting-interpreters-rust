@@ -30,7 +30,7 @@ impl Chunk {
         Self {
             code: Vec::new(),
             constants: ValueArray::new(),
-            lines: RunLength::new(),
+            lines: Lines::new(),
         }
     }
 
