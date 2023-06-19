@@ -1,3 +1,4 @@
+pub mod vm;
 pub mod walk_tree;
 
 pub fn add(left: usize, right: usize) -> usize {
