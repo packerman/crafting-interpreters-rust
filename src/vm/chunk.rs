@@ -1,4 +1,7 @@
-use super::value::{Value, ValueArray};
+use super::{
+    run_length::RunLength,
+    value::{Value, ValueArray},
+};
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
@@ -13,10 +16,13 @@ impl From<OpCode> for u8 {
     }
 }
 
+pub type Lines = RunLength<usize>;
+
 #[derive(Debug)]
 pub struct Chunk {
     code: Vec<u8>,
     constants: ValueArray,
+    lines: Lines,
 }
 
 impl Chunk {
@@ -24,14 +30,16 @@ impl Chunk {
         Self {
             code: Vec::new(),
             constants: ValueArray::new(),
+            lines: RunLength::new(),
         }
     }
 
-    pub fn write<T>(&mut self, value: T)
+    pub fn write<T>(&mut self, value: T, line: usize)
     where
         u8: From<T>,
     {
         self.code.push(u8::from(value));
+        self.lines.push(line);
     }
 
     pub fn count(&self) -> usize {
@@ -49,5 +57,9 @@ impl Chunk {
 
     pub fn constants(&self) -> &ValueArray {
         &self.constants
+    }
+
+    pub fn lines(&self) -> &Lines {
+        &self.lines
     }
 }
